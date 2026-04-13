@@ -39,21 +39,29 @@ def send_buttons(msg):
     except Exception as e:
         print("Telegram Button Error:", e)
 
-# === PRICE ===
+# === ULTRA SAFE PRICE ===
 def get_price():
+    # PRIMARY
     try:
-        data = requests.get("https://api.gold-api.com/price/XAUUSD", timeout=10).json()
-        if data.get("price"):
-            return float(data["price"])
+        res = requests.get("https://api.gold-api.com/price/XAUUSD", timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            if data and "price" in data:
+                return float(data["price"])
     except Exception as e:
         print("Primary API Error:", e)
 
+    # BACKUP
     try:
-        data = requests.get(
+        res = requests.get(
             "https://query1.finance.yahoo.com/v8/finance/chart/GC=F",
             timeout=10
-        ).json()
-        return data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+        )
+        if res.status_code == 200:
+            data = res.json()
+            result = data.get("chart", {}).get("result")
+            if result:
+                return result[0]["meta"]["regularMarketPrice"]
     except Exception as e:
         print("Backup API Error:", e)
 
@@ -130,7 +138,7 @@ Trades Today: {trade_count}
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (STABLE VERSION)")
+send_msg("🚀 BOT STARTED (FINAL STABLE VERSION)")
 
 # === LOOP ===
 while True:
@@ -138,7 +146,7 @@ while True:
         now = datetime.now(timezone.utc)
         print("Running at:", now)
 
-        # reset daily trade count
+        # reset trades daily
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
@@ -146,8 +154,8 @@ while True:
         # === GET PRICE ===
         price = get_price()
         if price is None:
-            print("Price fetch failed")
-            time.sleep(60)
+            print("⚠️ Price fetch failed, retrying...")
+            time.sleep(30)
             continue
 
         # === BUILD 5-MIN CANDLE ===
@@ -227,20 +235,20 @@ TP2: {round(tp2,2)}
 Score: {score}/10
 Trend: {trend_dir}
 Volatility: {vol}
+
+🎯 50% TP1, rest TP2
 """
             send_buttons(msg)
 
             trade_count += 1
             prices = []
 
-        # === 15 MIN UPDATE (RELIABLE) ===
+        # === 15 MIN UPDATE (NO MISS) ===
         if last_update_key is None:
             last_update_key = int(time.time())
 
-        current_time = int(time.time())
-
-        if current_time - last_update_key >= 900:
-            last_update_key = current_time
+        if int(time.time()) - last_update_key >= 900:
+            last_update_key = int(time.time())
             send_msg(smart_status(candle["close"], high, low, trend_dir, structure))
 
         time.sleep(60)
