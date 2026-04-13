@@ -9,7 +9,7 @@ risk_percent = 0.02
 
 trade_count = 0
 last_trade_day = None
-last_update_minute = None
+last_update_key = None
 
 total_trades = 0
 wins = 0
@@ -37,10 +37,6 @@ def send_buttons(msg):
                       json={"chat_id": CHAT_ID, "text": msg, "reply_markup": keyboard})
     except:
         pass
-
-# === SESSION ===
-def session_active():
-    return 7 <= datetime.utcnow().hour <= 17
 
 # === GOLD PRICE (PRIMARY + BACKUP) ===
 def get_price():
@@ -115,6 +111,40 @@ def fibonacci(high, low, price):
     fib618 = low + (high - low) * 0.618
     return abs(price - fib50) < 0.5 or abs(price - fib618) < 0.5
 
+# === SESSION ===
+def market_session():
+    hour = datetime.utcnow().hour
+    if 7 <= hour < 12:
+        return "London 🔵"
+    elif 12 <= hour < 17:
+        return "New York 🟣"
+    elif 11 <= hour <= 13:
+        return "Overlap 🔥"
+    else:
+        return "Asian / Slow 💤"
+
+# === BEST HOUR ===
+def best_trading_hour():
+    hour = datetime.utcnow().hour
+    if 7 <= hour <= 10:
+        return "ACTIVE ⚡ (London)"
+    elif 12 <= hour <= 15:
+        return "ACTIVE ⚡ (NY)"
+    else:
+        return "LOW 💤"
+
+# === VOLATILITY ===
+def volatility():
+    if len(prices) < 20:
+        return "UNKNOWN"
+    move = max(prices[-10:]) - min(prices[-10:])
+    if move > 5:
+        return "HIGH 🚀"
+    elif move > 2:
+        return "MEDIUM ⚡"
+    else:
+        return "LOW 💤"
+
 # === LOT ===
 def calc_lot(entry, sl):
     risk = capital * risk_percent
@@ -124,6 +154,9 @@ def calc_lot(entry, sl):
 # === SMART STATUS ===
 def smart_status(price, high, low, trend_dir, structure):
     strength = trend_strength()
+    session = market_session()
+    best_hour = best_trading_hour()
+    vol = volatility()
 
     if abs(price - high) < 1:
         zone = "Near High 🔺"
@@ -132,24 +165,34 @@ def smart_status(price, high, low, trend_dir, structure):
     else:
         zone = "Mid Range"
 
-    winrate = round((wins / total_trades) * 100, 2) if total_trades > 0 else 0
+    if trend_dir == "UP":
+        bias = "BUY ZONE"
+    elif trend_dir == "DOWN":
+        bias = "SELL ZONE"
+    else:
+        bias = "NO TRADE"
 
     return f"""
 📊 VIP MARKET STATUS (XAUUSD)
 
+Session: {session}
+Best Hour: {best_hour}
+Volatility: {vol}
+
 Trend: {trend_dir} ({strength})
 Structure: {structure}
 Liquidity: {zone}
+Bias: {bias}
 
-Win Rate: {winrate}%
 Trades Today: {trade_count}
 
-⏳ Waiting for A+ sniper setup
+⏳ Waiting for A+ setup
 """
 
 # === START ===
-send_msg("🚀 VIP BOT ACTIVE")
+send_msg("🚀 VIP BOT ACTIVE (FULL MODE)")
 
+# === LOOP ===
 while True:
     try:
         now = datetime.utcnow()
@@ -157,10 +200,6 @@ while True:
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
-
-        if not session_active():
-            time.sleep(60)
-            continue
 
         price = get_price()
         if price is None:
@@ -195,22 +234,14 @@ while True:
         if structure: score += 2
         if liq: score += 2
 
-        if trade_count >= 2:
-            time.sleep(60)
-            continue
-
-        # === VIP SIGNAL ===
-        if signal and score >= 8:
+        # === TRADE SIGNAL ===
+        if signal and score >= 8 and volatility() != "LOW 💤":
             entry = price
             sl = price - 2 if signal == "BUY" else price + 2
             tp1 = price + 3 if signal == "BUY" else price - 3
             tp2 = price + 6 if signal == "BUY" else price - 6
 
             confidence = "⭐⭐⭐" if score >= 9 else "⭐⭐"
-            tp1_prob = "70%" if score >= 9 else "65%"
-            tp2_prob = "45%" if score >= 9 else "40%"
-
-            total_trades += 1
 
             msg = f"""
 🚨 VIP SNIPER TRADE (XAUUSD)
@@ -225,27 +256,27 @@ TP2: {round(tp2,2)}
 RR: 1:3 🔥
 Confidence: {confidence}
 
-📊 Context:
 Trend: {trend_dir} ({trend_strength()})
-Structure: {structure}
-
-📈 Win Probability:
-TP1: {tp1_prob}
-TP2: {tp2_prob}
+Session: {market_session()}
+Volatility: {volatility()}
 
 🎯 Plan:
-• 50% close at TP1
-• Move SL to entry
-• Hold rest for TP2
+• 50% at TP1
+• SL to BE
+• Hold for TP2
 """
             send_buttons(msg)
 
             trade_count += 1
             prices = []
 
-        # === 30 MIN STATUS ===
-        if now.minute in [0, 30] and last_update_minute != now.minute:
-            last_update_minute = now.minute
+        # === EXACT 15 MIN UPDATE ===
+        minute = now.minute
+        second = now.second
+        current_key = f"{now.hour}:{minute//15}"
+
+        if minute % 15 == 0 and second < 5 and last_update_key != current_key:
+            last_update_key = current_key
             send_msg(smart_status(price, high, low, trend_dir, structure))
 
         time.sleep(60)
