@@ -67,7 +67,7 @@ def calc_lot(entry, sl):
 
 # === MAIN ENGINE ===
 prices = []
-
+send_msg("✅ Bot Started Successfully")
 while True:
     try:
         now = datetime.utcnow()
