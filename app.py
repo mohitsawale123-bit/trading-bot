@@ -206,14 +206,17 @@ Volatility: {volatility()}
             trade_count += 1
             prices = []
 
-        # === EXACT 15 MIN UPDATE (FIXED) ===
-        minute = now.minute
-        current_key = f"{now.hour}:{minute//15}"
+        # === RELIABLE 15-MIN INTERVAL (NO MISS) ===
+if last_update_key is None:
+    last_update_key = int(time.time())
 
-        if minute % 15 == 0 and last_update_key != current_key:
-            last_update_key = current_key
+current_time = int(time.time())
 
-            send_msg(smart_status(price, high, low, trend_dir, structure))
+# 900 sec = 15 minutes
+if current_time - last_update_key >= 900:
+    last_update_key = current_time
+
+    send_msg(smart_status(price, high, low, trend_dir, structure))
 
         time.sleep(60)
 
