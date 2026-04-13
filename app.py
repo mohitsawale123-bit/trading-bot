@@ -38,12 +38,11 @@ def send_buttons(msg):
     except:
         pass
 
-# === SESSION FILTER ===
+# === SESSION ===
 def session_active():
-    hour = datetime.utcnow().hour
-    return 7 <= hour <= 17
+    return 7 <= datetime.utcnow().hour <= 17
 
-# === STABLE GOLD PRICE (PRIMARY + BACKUP) ===
+# === GOLD PRICE (PRIMARY + BACKUP) ===
 def get_price():
     try:
         url = "https://api.gold-api.com/price/XAUUSD"
@@ -83,17 +82,11 @@ def trend():
         return None
     return "UP" if np.mean(prices[-20:]) > np.mean(prices[-50:]) else "DOWN"
 
-# === TREND STRENGTH ===
 def trend_strength():
     if len(prices) < 20:
         return "UNKNOWN"
     move = abs(prices[-1] - prices[-10])
-    if move > 3:
-        return "STRONG"
-    elif move > 1.5:
-        return "MODERATE"
-    else:
-        return "WEAK"
+    return "STRONG" if move > 3 else "MODERATE" if move > 1.5 else "WEAK"
 
 # === STRUCTURE ===
 def market_structure():
@@ -133,35 +126,30 @@ def smart_status(price, high, low, trend_dir, structure):
     strength = trend_strength()
 
     if abs(price - high) < 1:
-        liquidity_zone = "Near High 🔺"
+        zone = "Near High 🔺"
     elif abs(price - low) < 1:
-        liquidity_zone = "Near Low 🔻"
+        zone = "Near Low 🔻"
     else:
-        liquidity_zone = "Mid Range"
+        zone = "Mid Range"
 
-    if trend_dir == "UP":
-        bias = "BUY ZONE"
-    elif trend_dir == "DOWN":
-        bias = "SELL ZONE"
-    else:
-        bias = "NO TRADE"
+    winrate = round((wins / total_trades) * 100, 2) if total_trades > 0 else 0
 
     return f"""
-📊 MARKET STATUS (XAUUSD)
+📊 VIP MARKET STATUS (XAUUSD)
 
 Trend: {trend_dir} ({strength})
 Structure: {structure}
-Liquidity: {liquidity_zone}
-Bias: {bias}
+Liquidity: {zone}
 
-📊 Trades: {total_trades}
-⏳ Waiting for A+ setup
+Win Rate: {winrate}%
+Trades Today: {trade_count}
+
+⏳ Waiting for A+ sniper setup
 """
 
 # === START ===
-send_msg("🚀 FINAL BOT ACTIVE (SMART MODE)")
+send_msg("🚀 VIP BOT ACTIVE")
 
-# === LOOP ===
 while True:
     try:
         now = datetime.utcnow()
@@ -211,35 +199,54 @@ while True:
             time.sleep(60)
             continue
 
-        # === TRADE SIGNAL (ANYTIME) ===
+        # === VIP SIGNAL ===
         if signal and score >= 8:
             entry = price
             sl = price - 2 if signal == "BUY" else price + 2
-            tp = price + 6 if signal == "BUY" else price - 6
+            tp1 = price + 3 if signal == "BUY" else price - 3
+            tp2 = price + 6 if signal == "BUY" else price - 6
+
+            confidence = "⭐⭐⭐" if score >= 9 else "⭐⭐"
+            tp1_prob = "70%" if score >= 9 else "65%"
+            tp2_prob = "45%" if score >= 9 else "40%"
 
             total_trades += 1
 
             msg = f"""
-🚨 PRO TRADE (XAUUSD)
+🚨 VIP SNIPER TRADE (XAUUSD)
 
 Type: {signal}
-Entry: {entry}
-SL: {sl}
-TP: {tp}
+Entry: {round(entry,2)}
 
-Score: {score}/10
+SL: {round(sl,2)}
+TP1: {round(tp1,2)}
+TP2: {round(tp2,2)}
+
+RR: 1:3 🔥
+Confidence: {confidence}
+
+📊 Context:
+Trend: {trend_dir} ({trend_strength()})
+Structure: {structure}
+
+📈 Win Probability:
+TP1: {tp1_prob}
+TP2: {tp2_prob}
+
+🎯 Plan:
+• 50% close at TP1
+• Move SL to entry
+• Hold rest for TP2
 """
             send_buttons(msg)
 
             trade_count += 1
             prices = []
 
-        # === SMART STATUS EVERY 30 MIN ===
+        # === 30 MIN STATUS ===
         if now.minute in [0, 30] and last_update_minute != now.minute:
             last_update_minute = now.minute
-
-            status_msg = smart_status(price, high, low, trend_dir, structure)
-            send_msg(status_msg)
+            send_msg(smart_status(price, high, low, trend_dir, structure))
 
         time.sleep(60)
 
