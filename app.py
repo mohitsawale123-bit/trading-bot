@@ -1,7 +1,7 @@
 import requests, os, numpy as np, time, traceback
 from datetime import datetime, timezone
 
-print("🔥 FINAL BOT ACTIVE")
+print("🔥 FINAL BOT ACTIVE (CLOCK MODE)")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -40,13 +40,12 @@ def send_buttons(msg):
     except:
         pass
 
-# === ULTRA STABLE PRICE ===
+# === STABLE PRICE ===
 def get_price():
     global last_price
 
     for _ in range(3):
 
-        # 1️⃣ Yahoo 1m
         try:
             res = requests.get(
                 "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1m",
@@ -61,7 +60,6 @@ def get_price():
         except:
             pass
 
-        # 2️⃣ Yahoo normal
         try:
             res = requests.get(
                 "https://query1.finance.yahoo.com/v8/finance/chart/GC=F",
@@ -76,7 +74,6 @@ def get_price():
         except:
             pass
 
-        # 3️⃣ Gold API backup
         try:
             res = requests.get(
                 "https://api.gold-api.com/price/XAU",
@@ -128,7 +125,7 @@ Trades Today: {trade_count}
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (FINAL STABLE VERSION)")
+send_msg("🚀 BOT STARTED (FINAL CLOCK VERSION)")
 
 # === LOOP ===
 while True:
@@ -136,18 +133,17 @@ while True:
         now = datetime.now(timezone.utc)
         print("Running at:", now)
 
-        # reset daily trade count
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
 
-        # === GET PRICE ===
         price = get_price()
+
         if price is None:
             time.sleep(10)
             continue
 
-        # === BUILD 5-MIN CANDLE ===
+        # === 5-MIN CANDLE ===
         candle_buffer.append(price)
 
         if len(candle_buffer) < 5:
@@ -193,13 +189,16 @@ TP: {round(tp,2)}
             trade_count += 1
             prices = []
 
-        # === 15 MIN UPDATE ===
-        if last_update_key is None:
-            last_update_key = int(time.time())
+        # === EXACT CLOCK UPDATE ===
+        now_minute = now.minute
 
-        if int(time.time()) - last_update_key >= 900:
-            last_update_key = int(time.time())
-            send_msg(smart_status(candle_close, high, low, trend_dir, structure))
+        if now_minute % 15 == 0:
+            current_key = f"{now.hour}:{now_minute}"
+
+            if last_update_key != current_key:
+                last_update_key = current_key
+
+                send_msg(smart_status(candle_close, high, low, trend_dir, structure))
 
         time.sleep(60)
 
