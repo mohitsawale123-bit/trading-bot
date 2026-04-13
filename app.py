@@ -1,7 +1,7 @@
 import requests, os, numpy as np, time, traceback
 from datetime import datetime, timezone
 
-print("🔥 NEW CODE ACTIVE - FINAL VERSION")
+print("🔥 FINAL BOT ACTIVE")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -14,7 +14,6 @@ prices = []
 candle_buffer = []
 
 last_price = None
-last_error_time = 0
 
 # === TELEGRAM ===
 def send_msg(msg):
@@ -41,43 +40,59 @@ def send_buttons(msg):
     except:
         pass
 
-# === STABLE PRICE (NO metals.live) ===
+# === ULTRA STABLE PRICE ===
 def get_price():
-    global last_price, last_error_time
+    global last_price
 
-    # PRIMARY
-    try:
-        res = requests.get("https://api.gold-api.com/price/XAUUSD", timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            if "price" in data:
-                last_price = float(data["price"])
-                return last_price
-    except:
-        pass
+    for _ in range(3):
 
-    # BACKUP
-    try:
-        res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/GC=F", timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            result = data.get("chart", {}).get("result")
-            if result:
-                last_price = result[0]["meta"]["regularMarketPrice"]
-                return last_price
-    except:
-        pass
+        # 1️⃣ Yahoo 1m
+        try:
+            res = requests.get(
+                "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1m",
+                timeout=5
+            )
+            if res.status_code == 200:
+                data = res.json()
+                result = data.get("chart", {}).get("result")
+                if result:
+                    last_price = float(result[0]["meta"]["regularMarketPrice"])
+                    return last_price
+        except:
+            pass
 
-    # FALLBACK
-    if last_price:
-        return last_price
+        # 2️⃣ Yahoo normal
+        try:
+            res = requests.get(
+                "https://query1.finance.yahoo.com/v8/finance/chart/GC=F",
+                timeout=5
+            )
+            if res.status_code == 200:
+                data = res.json()
+                result = data.get("chart", {}).get("result")
+                if result:
+                    last_price = float(result[0]["meta"]["regularMarketPrice"])
+                    return last_price
+        except:
+            pass
 
-    # silent error (no spam)
-    if time.time() - last_error_time > 300:
-        print("⚠️ Price API unavailable")
-        last_error_time = time.time()
+        # 3️⃣ Gold API backup
+        try:
+            res = requests.get(
+                "https://api.gold-api.com/price/XAU",
+                timeout=5
+            )
+            if res.status_code == 200:
+                data = res.json()
+                if "price" in data:
+                    last_price = float(data["price"])
+                    return last_price
+        except:
+            pass
 
-    return None
+        time.sleep(2)
+
+    return last_price
 
 # === TREND ===
 def trend():
@@ -113,7 +128,7 @@ Trades Today: {trade_count}
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (FINAL CLEAN VERSION)")
+send_msg("🚀 BOT STARTED (FINAL STABLE VERSION)")
 
 # === LOOP ===
 while True:
@@ -121,16 +136,18 @@ while True:
         now = datetime.now(timezone.utc)
         print("Running at:", now)
 
+        # reset daily trade count
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
 
+        # === GET PRICE ===
         price = get_price()
         if price is None:
-            time.sleep(20)
+            time.sleep(10)
             continue
 
-        # === 5-MIN CANDLE ===
+        # === BUILD 5-MIN CANDLE ===
         candle_buffer.append(price)
 
         if len(candle_buffer) < 5:
@@ -150,22 +167,29 @@ while True:
         structure = market_structure()
 
         signal = None
+
         if candle_close > high:
             signal = "BUY"
         elif candle_close < low:
             signal = "SELL"
 
+        # === TRADE ===
         if signal:
+            entry = candle_close
+            sl = entry - 2 if signal == "BUY" else entry + 2
+            tp = entry + 4 if signal == "BUY" else entry - 4
+
             msg = f"""
-🚨 TRADE
+🚨 TRADE ALERT
 
 Type: {signal}
-Entry: {round(candle_close,2)}
+Entry: {round(entry,2)}
 
-SL: {round(candle_close-2 if signal=='BUY' else candle_close+2,2)}
-TP: {round(candle_close+4 if signal=='BUY' else candle_close-4,2)}
+SL: {round(sl,2)}
+TP: {round(tp,2)}
 """
             send_buttons(msg)
+
             trade_count += 1
             prices = []
 
