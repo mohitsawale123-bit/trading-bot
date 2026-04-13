@@ -13,6 +13,7 @@ last_update_key = None
 
 prices = []
 candle_buffer = []
+last_price = None
 
 # === TELEGRAM ===
 def send_msg(msg):
@@ -39,31 +40,49 @@ def send_buttons(msg):
     except Exception as e:
         print("Telegram Button Error:", e)
 
-# === ULTRA SAFE PRICE ===
+# === ULTRA STABLE PRICE ===
 def get_price():
-    # PRIMARY
-    try:
-        res = requests.get("https://api.gold-api.com/price/XAUUSD", timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            if data and "price" in data:
-                return float(data["price"])
-    except Exception as e:
-        print("Primary API Error:", e)
+    global last_price
 
-    # BACKUP
-    try:
-        res = requests.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/GC=F",
-            timeout=10
-        )
-        if res.status_code == 200:
+    urls = [
+        "https://api.gold-api.com/price/XAUUSD",
+        "https://api.metals.live/v1/spot/gold",
+        "https://query1.finance.yahoo.com/v8/finance/chart/GC=F"
+    ]
+
+    for url in urls:
+        try:
+            res = requests.get(url, timeout=10)
+
+            if res.status_code != 200:
+                continue
+
             data = res.json()
-            result = data.get("chart", {}).get("result")
+
+            # API 1
+            if isinstance(data, dict) and "price" in data:
+                last_price = float(data["price"])
+                return last_price
+
+            # API 2
+            if isinstance(data, list) and len(data) > 0:
+                last_price = float(data[0]["price"])
+                return last_price
+
+            # API 3
+            result = data.get("chart", {}).get("result") if isinstance(data, dict) else None
             if result:
-                return result[0]["meta"]["regularMarketPrice"]
-    except Exception as e:
-        print("Backup API Error:", e)
+                last_price = result[0]["meta"]["regularMarketPrice"]
+                return last_price
+
+        except Exception as e:
+            print("API Error:", url, e)
+            continue
+
+    # fallback
+    if last_price:
+        print("⚠️ Using last known price")
+        return last_price
 
     return None
 
@@ -138,7 +157,7 @@ Trades Today: {trade_count}
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (FINAL STABLE VERSION)")
+send_msg("🚀 BOT STARTED (ULTRA STABLE VERSION)")
 
 # === LOOP ===
 while True:
@@ -146,7 +165,7 @@ while True:
         now = datetime.now(timezone.utc)
         print("Running at:", now)
 
-        # reset trades daily
+        # reset trades
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
@@ -154,8 +173,8 @@ while True:
         # === GET PRICE ===
         price = get_price()
         if price is None:
-            print("⚠️ Price fetch failed, retrying...")
-            time.sleep(30)
+            print("⚠️ Price fetch failed")
+            time.sleep(10)
             continue
 
         # === BUILD 5-MIN CANDLE ===
@@ -243,7 +262,7 @@ Volatility: {vol}
             trade_count += 1
             prices = []
 
-        # === 15 MIN UPDATE (NO MISS) ===
+        # === 15 MIN UPDATE ===
         if last_update_key is None:
             last_update_key = int(time.time())
 
