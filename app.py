@@ -1,7 +1,7 @@
 import requests, os, numpy as np, time, traceback
 from datetime import datetime, timezone, timedelta
 
-print("🔥 FINAL BOT ACTIVE (IST + 3MIN FINAL CLEAN)")
+print("🔥 FINAL BOT ACTIVE (ULTIMATE FIXED VERSION)")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -40,12 +40,11 @@ def send_buttons(msg):
     except:
         pass
 
-# === STABLE PRICE ===
+# === PRICE ===
 def get_price():
     global last_price
 
     for _ in range(3):
-
         try:
             res = requests.get(
                 "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1m",
@@ -99,6 +98,8 @@ def trend():
 
 # === LEVELS ===
 def levels():
+    if len(prices) < 30:
+        return None, None
     return max(prices[-30:]), min(prices[-30:])
 
 # === STRUCTURE ===
@@ -110,31 +111,16 @@ def market_structure():
     if min(prices[-10:]) < min(prices[-20:-10]):
         return "BOS_DOWN"
 
-# === STATUS ===
-def smart_status(price, high, low, trend_dir, structure):
-    return f"""
-📊 STATUS (XAUUSD)
-
-Trend: {trend_dir}
-Structure: {structure}
-
-High: {round(high,2)}
-Low: {round(low,2)}
-
-Trades Today: {trade_count}
-"""
-
 # === START ===
-send_msg("🚀 BOT STARTED (IST + 3MIN FINAL CLEAN)")
+send_msg("🚀 BOT STARTED (ULTIMATE FIXED VERSION)")
 
 # === LOOP ===
 while True:
     try:
-        # ✅ FINAL TIME FIX (NO WARNING)
         now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-
         print("Running at:", now)
 
+        # === RESET DAILY COUNT ===
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
@@ -145,7 +131,29 @@ while True:
             time.sleep(10)
             continue
 
-        # === 5-MIN CANDLE ===
+        # ================================
+        # ✅ 3-MIN UPDATE (ALWAYS RUN)
+        # ================================
+        now_minute = now.minute
+
+        if now_minute % 3 == 0:
+            current_key = f"{now.hour}:{now_minute}"
+
+            if last_update_key != current_key:
+                last_update_key = current_key
+
+                send_msg(f"""
+📊 LIVE STATUS
+
+Price: {round(price,2)}
+Time: {now.strftime('%H:%M')}
+
+Trades Today: {trade_count}
+""")
+
+        # ================================
+        # 🔹 BUILD 5-MIN CANDLE
+        # ================================
         candle_buffer.append(price)
 
         if len(candle_buffer) < 5:
@@ -156,6 +164,9 @@ while True:
         prices.append(candle_close)
         candle_buffer = []
 
+        # ================================
+        # 🔹 STRATEGY
+        # ================================
         if len(prices) < 50:
             time.sleep(60)
             continue
@@ -166,12 +177,14 @@ while True:
 
         signal = None
 
-        if candle_close > high:
+        if high and candle_close > high:
             signal = "BUY"
-        elif candle_close < low:
+        elif low and candle_close < low:
             signal = "SELL"
 
-        # === TRADE ===
+        # ================================
+        # 🚨 TRADE ALERT
+        # ================================
         if signal:
             entry = candle_close
             sl = entry - 2 if signal == "BUY" else entry + 2
@@ -190,17 +203,6 @@ TP: {round(tp,2)}
 
             trade_count += 1
             prices = []
-
-        # === EXACT 3-MIN UPDATE ===
-        now_minute = now.minute
-
-        if now_minute % 3 == 0:
-            current_key = f"{now.hour}:{now_minute}"
-
-            if last_update_key != current_key:
-                last_update_key = current_key
-
-                send_msg(smart_status(candle_close, high, low, trend_dir, structure))
 
         time.sleep(60)
 
