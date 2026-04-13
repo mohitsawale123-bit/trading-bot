@@ -77,6 +77,8 @@ def calc_lot(entry, sl):
 
 # === START MESSAGE ===
 send_msg("✅ Bot Started Successfully")
+send_msg("🔥 Telegram is now connected!")
+
 
 # === MAIN ENGINE ===
 prices = []
