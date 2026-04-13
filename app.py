@@ -28,9 +28,9 @@ def send_buttons(msg):
 
 # === PRICE ===
 def get_price():
-    url = "https://api.metals.live/v1/spot/gold"
+    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
     data = requests.get(url).json()
-    return float(data[0]["price"])
+    return data["bitcoin"]["usd"]
 
 # === NEWS FILTER ===
 def is_news():
