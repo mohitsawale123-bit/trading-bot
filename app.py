@@ -1,5 +1,5 @@
-import requests, os, numpy as np, time
-from datetime import datetime
+import requests, os, numpy as np, time, traceback
+from datetime import datetime, timezone
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -17,10 +17,12 @@ candle_buffer = []
 # === TELEGRAM ===
 def send_msg(msg):
     try:
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                      data={"chat_id": CHAT_ID, "text": msg})
-    except:
-        pass
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            data={"chat_id": CHAT_ID, "text": msg}
+        )
+    except Exception as e:
+        print("Telegram Error:", e)
 
 def send_buttons(msg):
     try:
@@ -30,10 +32,12 @@ def send_buttons(msg):
                 {"text": "❌ NO", "callback_data": "NO"}
             ]]
         }
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                      json={"chat_id": CHAT_ID, "text": msg, "reply_markup": keyboard})
-    except:
-        pass
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={"chat_id": CHAT_ID, "text": msg, "reply_markup": keyboard}
+        )
+    except Exception as e:
+        print("Telegram Button Error:", e)
 
 # === PRICE ===
 def get_price():
@@ -41,14 +45,19 @@ def get_price():
         data = requests.get("https://api.gold-api.com/price/XAUUSD", timeout=10).json()
         if data.get("price"):
             return float(data["price"])
-    except:
-        pass
+    except Exception as e:
+        print("Primary API Error:", e)
 
     try:
-        data = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/GC=F", timeout=10).json()
+        data = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/GC=F",
+            timeout=10
+        ).json()
         return data["chart"]["result"][0]["meta"]["regularMarketPrice"]
-    except:
-        return None
+    except Exception as e:
+        print("Backup API Error:", e)
+
+    return None
 
 # === TREND ===
 def trend():
@@ -60,7 +69,12 @@ def trend_strength():
     if len(prices) < 20:
         return "UNKNOWN"
     move = abs(prices[-1] - prices[-10])
-    return "STRONG" if move > 3 else "MODERATE" if move > 1.5 else "WEAK"
+    if move > 3:
+        return "STRONG"
+    elif move > 1.5:
+        return "MODERATE"
+    else:
+        return "WEAK"
 
 # === LEVELS ===
 def levels():
@@ -112,24 +126,27 @@ Low: {round(low,2)}
 Volatility: {volatility()}
 Trades Today: {trade_count}
 
-⏳ Waiting for A+ setup
+⏳ Bot Running Smoothly
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (5-MIN SYSTEM ACTIVE)")
+send_msg("🚀 BOT STARTED (STABLE VERSION)")
 
 # === LOOP ===
 while True:
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
+        print("Running at:", now)
 
-        # reset trades
+        # reset daily trade count
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
 
+        # === GET PRICE ===
         price = get_price()
         if price is None:
+            print("Price fetch failed")
             time.sleep(60)
             continue
 
@@ -181,9 +198,10 @@ while True:
         if liq:
             score += 2
 
-        if volatility() == "HIGH 🚀":
+        vol = volatility()
+        if vol == "HIGH 🚀":
             score += 2
-        elif volatility() == "MEDIUM ⚡":
+        elif vol == "MEDIUM ⚡":
             score += 1
 
         if structure:
@@ -208,22 +226,26 @@ TP2: {round(tp2,2)}
 
 Score: {score}/10
 Trend: {trend_dir}
+Volatility: {vol}
 """
             send_buttons(msg)
 
             trade_count += 1
             prices = []
 
-        # === 15 MIN STATUS (RELIABLE) ===
+        # === 15 MIN UPDATE (RELIABLE) ===
         if last_update_key is None:
             last_update_key = int(time.time())
 
-        if int(time.time()) - last_update_key >= 900:
-            last_update_key = int(time.time())
+        current_time = int(time.time())
+
+        if current_time - last_update_key >= 900:
+            last_update_key = current_time
             send_msg(smart_status(candle["close"], high, low, trend_dir, structure))
 
         time.sleep(60)
 
     except Exception as e:
-        print("Error:", e)
+        print("CRASH ERROR:", e)
+        traceback.print_exc()
         time.sleep(60)
