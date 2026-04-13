@@ -1,11 +1,10 @@
 import requests, os, numpy as np, time, traceback
 from datetime import datetime, timezone
 
+print("🔥 NEW CODE ACTIVE - FINAL VERSION")
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-
-capital = 5
-risk_percent = 0.02
 
 trade_count = 0
 last_trade_day = None
@@ -42,22 +41,22 @@ def send_buttons(msg):
     except:
         pass
 
-# === FINAL STABLE PRICE ===
+# === STABLE PRICE (NO metals.live) ===
 def get_price():
     global last_price, last_error_time
 
-    # PRIMARY API
+    # PRIMARY
     try:
         res = requests.get("https://api.gold-api.com/price/XAUUSD", timeout=10)
         if res.status_code == 200:
             data = res.json()
-            if data and "price" in data:
+            if "price" in data:
                 last_price = float(data["price"])
                 return last_price
     except:
         pass
 
-    # BACKUP API
+    # BACKUP
     try:
         res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/GC=F", timeout=10)
         if res.status_code == 200:
@@ -69,12 +68,13 @@ def get_price():
     except:
         pass
 
-    # FALLBACK (NO ERROR SPAM)
+    # FALLBACK
     if last_price:
         return last_price
 
+    # silent error (no spam)
     if time.time() - last_error_time > 300:
-        print("⚠️ Price API temporarily unavailable")
+        print("⚠️ Price API unavailable")
         last_error_time = time.time()
 
     return None
@@ -84,12 +84,6 @@ def trend():
     if len(prices) < 50:
         return None
     return "UP" if np.mean(prices[-20:]) > np.mean(prices[-50:]) else "DOWN"
-
-def trend_strength():
-    if len(prices) < 20:
-        return "UNKNOWN"
-    move = abs(prices[-1] - prices[-10])
-    return "STRONG" if move > 3 else "MODERATE" if move > 1.5 else "WEAK"
 
 # === LEVELS ===
 def levels():
@@ -104,48 +98,22 @@ def market_structure():
     if min(prices[-10:]) < min(prices[-20:-10]):
         return "BOS_DOWN"
 
-# === LIQUIDITY ===
-def liquidity_sweep(price, high, low):
-    if len(prices) < 2:
-        return None
-    prev = prices[-2]
-
-    if price > high and prev < high:
-        return "SWEEP_BUY"
-    if price < low and prev > low:
-        return "SWEEP_SELL"
-
-# === VOLATILITY ===
-def volatility():
-    if len(prices) < 20:
-        return "UNKNOWN"
-    move = max(prices[-10:]) - min(prices[-10:])
-    if move > 5:
-        return "HIGH 🚀"
-    elif move > 2:
-        return "MEDIUM ⚡"
-    else:
-        return "LOW 💤"
-
 # === STATUS ===
 def smart_status(price, high, low, trend_dir, structure):
     return f"""
-📊 VIP MARKET STATUS (XAUUSD)
+📊 STATUS (XAUUSD)
 
-Trend: {trend_dir} ({trend_strength()})
+Trend: {trend_dir}
 Structure: {structure}
 
 High: {round(high,2)}
 Low: {round(low,2)}
 
-Volatility: {volatility()}
 Trades Today: {trade_count}
-
-⏳ Bot Running Smoothly
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (FINAL FIXED - NO API ERROR)")
+send_msg("🚀 BOT STARTED (FINAL CLEAN VERSION)")
 
 # === LOOP ===
 while True:
@@ -162,21 +130,15 @@ while True:
             time.sleep(20)
             continue
 
-        # === BUILD 5-MIN CANDLE ===
+        # === 5-MIN CANDLE ===
         candle_buffer.append(price)
 
         if len(candle_buffer) < 5:
             time.sleep(60)
             continue
 
-        candle = {
-            "open": candle_buffer[0],
-            "close": candle_buffer[-1],
-            "high": max(candle_buffer),
-            "low": min(candle_buffer)
-        }
-
-        prices.append(candle["close"])
+        candle_close = candle_buffer[-1]
+        prices.append(candle_close)
         candle_buffer = []
 
         if len(prices) < 50:
@@ -186,62 +148,24 @@ while True:
         high, low = levels()
         trend_dir = trend()
         structure = market_structure()
-        liq = liquidity_sweep(candle["close"], high, low)
 
         signal = None
-
-        if candle["close"] > high:
+        if candle_close > high:
             signal = "BUY"
-        elif candle["close"] < low:
+        elif candle_close < low:
             signal = "SELL"
 
-        if liq == "SWEEP_SELL":
-            signal = "BUY"
-        elif liq == "SWEEP_BUY":
-            signal = "SELL"
-
-        score = 0
-
-        if (trend_dir == "UP" and signal == "BUY") or (trend_dir == "DOWN" and signal == "SELL"):
-            score += 2
-
-        if liq:
-            score += 2
-
-        vol = volatility()
-        if vol == "HIGH 🚀":
-            score += 2
-        elif vol == "MEDIUM ⚡":
-            score += 1
-
-        if structure:
-            score += 2
-
-        # === TRADE ===
-        if signal and score >= 4:
-            entry = candle["close"]
-            sl = entry - 2 if signal == "BUY" else entry + 2
-            tp1 = entry + 3 if signal == "BUY" else entry - 3
-            tp2 = entry + 6 if signal == "BUY" else entry - 6
-
+        if signal:
             msg = f"""
-🚨 VIP TRADE (5M XAUUSD)
+🚨 TRADE
 
 Type: {signal}
-Entry: {round(entry,2)}
+Entry: {round(candle_close,2)}
 
-SL: {round(sl,2)}
-TP1: {round(tp1,2)}
-TP2: {round(tp2,2)}
-
-Score: {score}/10
-Trend: {trend_dir}
-Volatility: {vol}
-
-🎯 50% TP1, rest TP2
+SL: {round(candle_close-2 if signal=='BUY' else candle_close+2,2)}
+TP: {round(candle_close+4 if signal=='BUY' else candle_close-4,2)}
 """
             send_buttons(msg)
-
             trade_count += 1
             prices = []
 
@@ -251,11 +175,11 @@ Volatility: {vol}
 
         if int(time.time()) - last_update_key >= 900:
             last_update_key = int(time.time())
-            send_msg(smart_status(candle["close"], high, low, trend_dir, structure))
+            send_msg(smart_status(candle_close, high, low, trend_dir, structure))
 
         time.sleep(60)
 
     except Exception as e:
-        print("CRASH ERROR:", e)
+        print("ERROR:", e)
         traceback.print_exc()
         time.sleep(60)
