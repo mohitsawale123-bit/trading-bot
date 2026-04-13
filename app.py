@@ -9,9 +9,8 @@ risk_percent = 0.02
 
 trade_count = 0
 last_trade_day = None
-last_update_hour = None
+last_update_minute = None
 
-# === PERFORMANCE TRACKING ===
 total_trades = 0
 wins = 0
 losses = 0
@@ -42,13 +41,22 @@ def send_buttons(msg):
 # === SESSION FILTER ===
 def session_active():
     hour = datetime.utcnow().hour
-    return 7 <= hour <= 17  # London + NY overlap
+    return 7 <= hour <= 17
 
-# === PRICE ===
+# === STABLE GOLD PRICE (PRIMARY + BACKUP) ===
 def get_price():
     try:
-        url = "https://api.metals.live/v1/spot/gold"
-        return requests.get(url).json()[0]["price"]
+        url = "https://api.gold-api.com/price/XAUUSD"
+        data = requests.get(url, timeout=10).json()
+        if data.get("price"):
+            return float(data["price"])
+    except:
+        pass
+
+    try:
+        url = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F"
+        data = requests.get(url, timeout=10).json()
+        return data["chart"]["result"][0]["meta"]["regularMarketPrice"]
     except:
         return None
 
@@ -74,6 +82,18 @@ def trend():
     if len(prices) < 50:
         return None
     return "UP" if np.mean(prices[-20:]) > np.mean(prices[-50:]) else "DOWN"
+
+# === TREND STRENGTH ===
+def trend_strength():
+    if len(prices) < 20:
+        return "UNKNOWN"
+    move = abs(prices[-1] - prices[-10])
+    if move > 3:
+        return "STRONG"
+    elif move > 1.5:
+        return "MODERATE"
+    else:
+        return "WEAK"
 
 # === STRUCTURE ===
 def market_structure():
@@ -102,26 +122,46 @@ def fibonacci(high, low, price):
     fib618 = low + (high - low) * 0.618
     return abs(price - fib50) < 0.5 or abs(price - fib618) < 0.5
 
-# === RETEST ===
-def retest(price, level):
-    return abs(price - level) < 0.5
-
 # === LOT ===
 def calc_lot(entry, sl):
     risk = capital * risk_percent
     dist = abs(entry - sl)
     return round(max(min(risk / (dist * 100), 0.02), 0.001), 3)
 
-# === PERFORMANCE REPORT ===
-def report():
-    if total_trades == 0:
-        return "No trades yet"
-    winrate = round((wins / total_trades) * 100, 2)
-    return f"Trades: {total_trades} | Wins: {wins} | Loss: {losses} | WR: {winrate}%"
+# === SMART STATUS ===
+def smart_status(price, high, low, trend_dir, structure):
+    strength = trend_strength()
 
-send_msg("🚀 PRODUCTION BOT ACTIVE")
-send_msg("📊 Session + Accuracy Tracking Enabled")
+    if abs(price - high) < 1:
+        liquidity_zone = "Near High 🔺"
+    elif abs(price - low) < 1:
+        liquidity_zone = "Near Low 🔻"
+    else:
+        liquidity_zone = "Mid Range"
 
+    if trend_dir == "UP":
+        bias = "BUY ZONE"
+    elif trend_dir == "DOWN":
+        bias = "SELL ZONE"
+    else:
+        bias = "NO TRADE"
+
+    return f"""
+📊 MARKET STATUS (XAUUSD)
+
+Trend: {trend_dir} ({strength})
+Structure: {structure}
+Liquidity: {liquidity_zone}
+Bias: {bias}
+
+📊 Trades: {total_trades}
+⏳ Waiting for A+ setup
+"""
+
+# === START ===
+send_msg("🚀 FINAL BOT ACTIVE (SMART MODE)")
+
+# === LOOP ===
 while True:
     try:
         now = datetime.utcnow()
@@ -130,7 +170,6 @@ while True:
             trade_count = 0
             last_trade_day = now.date()
 
-        # === SESSION CHECK ===
         if not session_active():
             time.sleep(60)
             continue
@@ -149,41 +188,34 @@ while True:
         candle = build_candle()
         high, low = levels()
 
-        tr = trend()
+        trend_dir = trend()
         structure = market_structure()
         liq = liquidity_sweep(price, high, low)
         fib = fibonacci(high, low, price)
 
         signal = None
 
-        if tr == "UP" and liq == "SWEEP_SELL" and strong_bullish(candle):
+        if trend_dir == "UP" and liq == "SWEEP_SELL" and strong_bullish(candle):
             signal = "BUY"
 
-        if tr == "DOWN" and liq == "SWEEP_BUY" and strong_bearish(candle):
+        if trend_dir == "DOWN" and liq == "SWEEP_BUY" and strong_bearish(candle):
             signal = "SELL"
 
-        # === SCORE ===
         score = 0
-        if signal:
-            score += 2
-        if fib:
-            score += 2
-        if structure:
-            score += 2
-        if liq:
-            score += 2
+        if signal: score += 2
+        if fib: score += 2
+        if structure: score += 2
+        if liq: score += 2
 
-        # === LIMIT ===
         if trade_count >= 2:
             time.sleep(60)
             continue
 
-        # === EXECUTION ===
+        # === TRADE SIGNAL (ANYTIME) ===
         if signal and score >= 8:
             entry = price
             sl = price - 2 if signal == "BUY" else price + 2
             tp = price + 6 if signal == "BUY" else price - 6
-            lot = calc_lot(entry, sl)
 
             total_trades += 1
 
@@ -196,18 +228,18 @@ SL: {sl}
 TP: {tp}
 
 Score: {score}/10
-
-📊 {report()}
 """
             send_buttons(msg)
 
             trade_count += 1
             prices = []
 
-        # === HOURLY STATUS ===
-        if last_update_hour != now.hour:
-            last_update_hour = now.hour
-            send_msg(f"📊 Status Update\n{report()}")
+        # === SMART STATUS EVERY 30 MIN ===
+        if now.minute in [0, 30] and last_update_minute != now.minute:
+            last_update_minute = now.minute
+
+            status_msg = smart_status(price, high, low, trend_dir, structure)
+            send_msg(status_msg)
 
         time.sleep(60)
 
