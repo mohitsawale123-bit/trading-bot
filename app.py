@@ -1,7 +1,7 @@
 import requests, os, numpy as np, time, traceback
 from datetime import datetime, timedelta
 
-print("🔥 FINAL BOT ACTIVE (IST + 3MIN MODE)")
+print("🔥 FINAL BOT ACTIVE (IST + 3MIN STABLE)")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -46,6 +46,7 @@ def get_price():
 
     for _ in range(3):
 
+        # Yahoo 1m
         try:
             res = requests.get(
                 "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1m",
@@ -60,6 +61,7 @@ def get_price():
         except:
             pass
 
+        # Yahoo normal
         try:
             res = requests.get(
                 "https://query1.finance.yahoo.com/v8/finance/chart/GC=F",
@@ -74,6 +76,7 @@ def get_price():
         except:
             pass
 
+        # Gold API
         try:
             res = requests.get(
                 "https://api.gold-api.com/price/XAU",
@@ -125,16 +128,17 @@ Trades Today: {trade_count}
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (IST TIME + 3MIN MODE)")
+send_msg("🚀 BOT STARTED (IST + 3MIN FINAL)")
 
 # === LOOP ===
 while True:
     try:
-        # === IST TIME FIX ===
+        # IST TIME FIX (NO ERROR)
         now = datetime.utcnow() + timedelta(hours=5, minutes=30)
 
         print("Running at:", now)
 
+        # reset daily trades
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
@@ -191,7 +195,7 @@ TP: {round(tp,2)}
             trade_count += 1
             prices = []
 
-        # === EXACT 3-MIN UPDATE (IST BASED) ===
+        # === EXACT 3-MIN UPDATE ===
         now_minute = now.minute
 
         if now_minute % 3 == 0:
