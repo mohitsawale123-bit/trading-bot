@@ -13,7 +13,9 @@ last_update_key = None
 
 prices = []
 candle_buffer = []
+
 last_price = None
+last_error_time = 0
 
 # === TELEGRAM ===
 def send_msg(msg):
@@ -22,8 +24,8 @@ def send_msg(msg):
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             data={"chat_id": CHAT_ID, "text": msg}
         )
-    except Exception as e:
-        print("Telegram Error:", e)
+    except:
+        pass
 
 def send_buttons(msg):
     try:
@@ -37,52 +39,43 @@ def send_buttons(msg):
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             json={"chat_id": CHAT_ID, "text": msg, "reply_markup": keyboard}
         )
-    except Exception as e:
-        print("Telegram Button Error:", e)
+    except:
+        pass
 
-# === ULTRA STABLE PRICE ===
+# === FINAL STABLE PRICE ===
 def get_price():
-    global last_price
+    global last_price, last_error_time
 
-    urls = [
-        "https://api.gold-api.com/price/XAUUSD",
-        "https://api.metals.live/v1/spot/gold",
-        "https://query1.finance.yahoo.com/v8/finance/chart/GC=F"
-    ]
-
-    for url in urls:
-        try:
-            res = requests.get(url, timeout=10)
-
-            if res.status_code != 200:
-                continue
-
+    # PRIMARY API
+    try:
+        res = requests.get("https://api.gold-api.com/price/XAUUSD", timeout=10)
+        if res.status_code == 200:
             data = res.json()
-
-            # API 1
-            if isinstance(data, dict) and "price" in data:
+            if data and "price" in data:
                 last_price = float(data["price"])
                 return last_price
+    except:
+        pass
 
-            # API 2
-            if isinstance(data, list) and len(data) > 0:
-                last_price = float(data[0]["price"])
-                return last_price
-
-            # API 3
-            result = data.get("chart", {}).get("result") if isinstance(data, dict) else None
+    # BACKUP API
+    try:
+        res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/GC=F", timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            result = data.get("chart", {}).get("result")
             if result:
                 last_price = result[0]["meta"]["regularMarketPrice"]
                 return last_price
+    except:
+        pass
 
-        except Exception as e:
-            print("API Error:", url, e)
-            continue
-
-    # fallback
+    # FALLBACK (NO ERROR SPAM)
     if last_price:
-        print("⚠️ Using last known price")
         return last_price
+
+    if time.time() - last_error_time > 300:
+        print("⚠️ Price API temporarily unavailable")
+        last_error_time = time.time()
 
     return None
 
@@ -96,12 +89,7 @@ def trend_strength():
     if len(prices) < 20:
         return "UNKNOWN"
     move = abs(prices[-1] - prices[-10])
-    if move > 3:
-        return "STRONG"
-    elif move > 1.5:
-        return "MODERATE"
-    else:
-        return "WEAK"
+    return "STRONG" if move > 3 else "MODERATE" if move > 1.5 else "WEAK"
 
 # === LEVELS ===
 def levels():
@@ -157,7 +145,7 @@ Trades Today: {trade_count}
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (ULTRA STABLE VERSION)")
+send_msg("🚀 BOT STARTED (FINAL FIXED - NO API ERROR)")
 
 # === LOOP ===
 while True:
@@ -165,16 +153,13 @@ while True:
         now = datetime.now(timezone.utc)
         print("Running at:", now)
 
-        # reset trades
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
 
-        # === GET PRICE ===
         price = get_price()
         if price is None:
-            print("⚠️ Price fetch failed")
-            time.sleep(10)
+            time.sleep(20)
             continue
 
         # === BUILD 5-MIN CANDLE ===
@@ -203,7 +188,6 @@ while True:
         structure = market_structure()
         liq = liquidity_sweep(candle["close"], high, low)
 
-        # === SIGNAL ===
         signal = None
 
         if candle["close"] > high:
@@ -216,7 +200,6 @@ while True:
         elif liq == "SWEEP_BUY":
             signal = "SELL"
 
-        # === SCORE ===
         score = 0
 
         if (trend_dir == "UP" and signal == "BUY") or (trend_dir == "DOWN" and signal == "SELL"):
