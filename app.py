@@ -1,7 +1,7 @@
 import requests, os, numpy as np, time, traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 
-print("🔥 FINAL BOT ACTIVE (CLOCK MODE)")
+print("🔥 FINAL BOT ACTIVE (IST + 3MIN MODE)")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -125,12 +125,14 @@ Trades Today: {trade_count}
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (FINAL CLOCK VERSION)")
+send_msg("🚀 BOT STARTED (IST TIME + 3MIN MODE)")
 
 # === LOOP ===
 while True:
     try:
-        now = datetime.now(timezone.utc)
+        # === IST TIME FIX ===
+        now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+
         print("Running at:", now)
 
         if last_trade_day != now.date():
@@ -189,10 +191,10 @@ TP: {round(tp,2)}
             trade_count += 1
             prices = []
 
-        # === EXACT CLOCK UPDATE ===
+        # === EXACT 3-MIN UPDATE (IST BASED) ===
         now_minute = now.minute
 
-        if now_minute % 15 == 0:
+        if now_minute % 3 == 0:
             current_key = f"{now.hour}:{now_minute}"
 
             if last_update_key != current_key:
