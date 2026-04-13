@@ -12,14 +12,13 @@ last_trade_day = None
 last_update_key = None
 
 prices = []
+candle_buffer = []
 
 # === TELEGRAM ===
 def send_msg(msg):
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": msg}
-        )
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                      data={"chat_id": CHAT_ID, "text": msg})
     except:
         pass
 
@@ -31,14 +30,12 @@ def send_buttons(msg):
                 {"text": "❌ NO", "callback_data": "NO"}
             ]]
         }
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": msg, "reply_markup": keyboard}
-        )
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                      json={"chat_id": CHAT_ID, "text": msg, "reply_markup": keyboard})
     except:
         pass
 
-# === GOLD PRICE (PRIMARY + BACKUP) ===
+# === PRICE ===
 def get_price():
     try:
         data = requests.get("https://api.gold-api.com/price/XAUUSD", timeout=10).json()
@@ -48,10 +45,7 @@ def get_price():
         pass
 
     try:
-        data = requests.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/GC=F",
-            timeout=10
-        ).json()
+        data = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/GC=F", timeout=10).json()
         return data["chart"]["result"][0]["meta"]["regularMarketPrice"]
     except:
         return None
@@ -66,12 +60,7 @@ def trend_strength():
     if len(prices) < 20:
         return "UNKNOWN"
     move = abs(prices[-1] - prices[-10])
-    if move > 3:
-        return "STRONG"
-    elif move > 1.5:
-        return "MODERATE"
-    else:
-        return "WEAK"
+    return "STRONG" if move > 3 else "MODERATE" if move > 1.5 else "WEAK"
 
 # === LEVELS ===
 def levels():
@@ -109,25 +98,10 @@ def volatility():
     else:
         return "LOW 💤"
 
-# === SESSION ===
-def market_session():
-    hour = datetime.utcnow().hour
-    if 7 <= hour < 12:
-        return "London 🔵"
-    elif 12 <= hour < 17:
-        return "New York 🟣"
-    elif 11 <= hour <= 13:
-        return "Overlap 🔥"
-    else:
-        return "Asian 💤"
-
 # === STATUS ===
 def smart_status(price, high, low, trend_dir, structure):
     return f"""
 📊 VIP MARKET STATUS (XAUUSD)
-
-Session: {market_session()}
-Volatility: {volatility()}
 
 Trend: {trend_dir} ({trend_strength()})
 Structure: {structure}
@@ -135,31 +109,46 @@ Structure: {structure}
 High: {round(high,2)}
 Low: {round(low,2)}
 
+Volatility: {volatility()}
 Trades Today: {trade_count}
 
 ⏳ Waiting for A+ setup
 """
 
 # === START ===
-send_msg("🚀 BOT STARTED (FINAL FIXED VERSION)")
+send_msg("🚀 BOT STARTED (5-MIN SYSTEM ACTIVE)")
 
-# === MAIN LOOP ===
+# === LOOP ===
 while True:
     try:
         now = datetime.utcnow()
 
-        # reset daily trades
+        # reset trades
         if last_trade_day != now.date():
             trade_count = 0
             last_trade_day = now.date()
 
-        # === PRICE ===
         price = get_price()
         if price is None:
             time.sleep(60)
             continue
 
-        prices.append(price)
+        # === BUILD 5-MIN CANDLE ===
+        candle_buffer.append(price)
+
+        if len(candle_buffer) < 5:
+            time.sleep(60)
+            continue
+
+        candle = {
+            "open": candle_buffer[0],
+            "close": candle_buffer[-1],
+            "high": max(candle_buffer),
+            "low": min(candle_buffer)
+        }
+
+        prices.append(candle["close"])
+        candle_buffer = []
 
         if len(prices) < 50:
             time.sleep(60)
@@ -168,26 +157,47 @@ while True:
         high, low = levels()
         trend_dir = trend()
         structure = market_structure()
-        liq = liquidity_sweep(price, high, low)
+        liq = liquidity_sweep(candle["close"], high, low)
 
+        # === SIGNAL ===
         signal = None
 
-        # === TRADE LOGIC ===
-        if trend_dir == "UP" and liq == "SWEEP_SELL":
+        if candle["close"] > high:
             signal = "BUY"
-
-        if trend_dir == "DOWN" and liq == "SWEEP_BUY":
+        elif candle["close"] < low:
             signal = "SELL"
 
-        # === TRADE EXECUTION ===
-        if signal and volatility() != "LOW 💤":
-            entry = price
-            sl = price - 2 if signal == "BUY" else price + 2
-            tp1 = price + 3 if signal == "BUY" else price - 3
-            tp2 = price + 6 if signal == "BUY" else price - 6
+        if liq == "SWEEP_SELL":
+            signal = "BUY"
+        elif liq == "SWEEP_BUY":
+            signal = "SELL"
+
+        # === SCORE ===
+        score = 0
+
+        if (trend_dir == "UP" and signal == "BUY") or (trend_dir == "DOWN" and signal == "SELL"):
+            score += 2
+
+        if liq:
+            score += 2
+
+        if volatility() == "HIGH 🚀":
+            score += 2
+        elif volatility() == "MEDIUM ⚡":
+            score += 1
+
+        if structure:
+            score += 2
+
+        # === TRADE ===
+        if signal and score >= 4:
+            entry = candle["close"]
+            sl = entry - 2 if signal == "BUY" else entry + 2
+            tp1 = entry + 3 if signal == "BUY" else entry - 3
+            tp2 = entry + 6 if signal == "BUY" else entry - 6
 
             msg = f"""
-🚨 VIP TRADE (XAUUSD)
+🚨 VIP TRADE (5M XAUUSD)
 
 Type: {signal}
 Entry: {round(entry,2)}
@@ -196,27 +206,21 @@ SL: {round(sl,2)}
 TP1: {round(tp1,2)}
 TP2: {round(tp2,2)}
 
+Score: {score}/10
 Trend: {trend_dir}
-Volatility: {volatility()}
-
-🎯 50% TP1, rest TP2
 """
             send_buttons(msg)
 
             trade_count += 1
             prices = []
 
-        # === RELIABLE 15-MIN INTERVAL (NO MISS) ===
-if last_update_key is None:
-    last_update_key = int(time.time())
+        # === 15 MIN STATUS (RELIABLE) ===
+        if last_update_key is None:
+            last_update_key = int(time.time())
 
-current_time = int(time.time())
-
-# 900 sec = 15 minutes
-if current_time - last_update_key >= 900:
-    last_update_key = current_time
-
-    send_msg(smart_status(price, high, low, trend_dir, structure))
+        if int(time.time()) - last_update_key >= 900:
+            last_update_key = int(time.time())
+            send_msg(smart_status(candle["close"], high, low, trend_dir, structure))
 
         time.sleep(60)
 
