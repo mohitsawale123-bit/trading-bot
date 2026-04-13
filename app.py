@@ -1,10 +1,11 @@
 import requests, os, numpy as np, time
 from datetime import datetime
 
+# === TELEGRAM CONFIG ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# === CONFIG ===
+# === ACCOUNT CONFIG ===
 capital = 5
 risk_percent = 0.02
 trade_count = 0
@@ -13,30 +14,39 @@ last_update_hour = None
 
 # === TELEGRAM ===
 def send_msg(msg):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+    except:
+        pass
 
 def send_buttons(msg):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    keyboard = {
-        "inline_keyboard": [[
-            {"text": "✅ YES", "callback_data": "YES"},
-            {"text": "❌ NO", "callback_data": "NO"}
-        ]]
-    }
-    requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "reply_markup": keyboard})
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        keyboard = {
+            "inline_keyboard": [[
+                {"text": "✅ YES", "callback_data": "YES"},
+                {"text": "❌ NO", "callback_data": "NO"}
+            ]]
+        }
+        requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "reply_markup": keyboard})
+    except:
+        pass
 
-# === PRICE ===
+# === PRICE (SAFE API) ===
 def get_price():
-    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-    data = requests.get(url).json()
-    return data["bitcoin"]["usd"]
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        data = requests.get(url, timeout=10).json()
+        return data.get("bitcoin", {}).get("usd", None)
+    except:
+        return None
 
 # === NEWS FILTER ===
 def is_news():
     try:
         url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
-        data = requests.get(url).json()
+        data = requests.get(url, timeout=10).json()
         now = datetime.utcnow()
 
         for event in data:
@@ -48,7 +58,7 @@ def is_news():
         return False
     return False
 
-# === PATTERN ===
+# === PATTERN LOGIC ===
 def triangle(prices):
     highs = prices[-20:]
     lows = prices[-20:]
@@ -65,9 +75,12 @@ def calc_lot(entry, sl):
     lot = risk / (dist * 100)
     return round(max(min(lot, 0.02), 0.001), 3)
 
+# === START MESSAGE ===
+send_msg("✅ Bot Started Successfully")
+
 # === MAIN ENGINE ===
 prices = []
-send_msg("✅ Bot Started Successfully")
+
 while True:
     try:
         now = datetime.utcnow()
@@ -77,7 +90,14 @@ while True:
             trade_count = 0
             last_trade_day = now.date()
 
+        # === GET PRICE ===
         price = get_price()
+
+        if price is None:
+            send_msg("⚠️ Price fetch failed, retrying...")
+            time.sleep(60)
+            continue
+
         prices.append(price)
 
         if len(prices) < 50:
@@ -95,21 +115,22 @@ while True:
 
         # === NEWS FILTER ===
         if is_news():
-            send_msg("🚫 News Event - No Trade")
+            send_msg("🚫 High Impact News - No Trade")
             time.sleep(300)
             continue
 
-        # === LIMIT ===
+        # === TRADE LIMIT ===
         if trade_count >= 2:
             time.sleep(60)
             continue
 
+        # === PATTERN CHECK ===
         tri = triangle(prices)
         ret = retest(price, high if signal == "BUY" else low)
 
         score = (3 if tri else 0) + (2 if ret else 0) + 2
 
-        # === TRADE ===
+        # === TRADE SIGNAL ===
         if signal and score >= 7:
             entry = price
             sl = price - 1 if signal == "BUY" else price + 1
@@ -136,7 +157,7 @@ Score: {score}/10
         # === HOURLY UPDATE ===
         if last_update_hour != now.hour:
             last_update_hour = now.hour
-            send_msg("⏳ No valid trade setup yet. Waiting for perfect breakout...")
+            send_msg("⏳ No valid trade setup yet. Waiting for breakout...")
 
         time.sleep(60)
 
