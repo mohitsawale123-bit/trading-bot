@@ -270,14 +270,15 @@ Volatility: {volatility()}
             trade_count += 1
             prices = []
 
-        # === EXACT 15 MIN UPDATE ===
-        minute = now.minute
-        second = now.second
-        current_key = f"{now.hour}:{minute//15}"
+       # === EXACT 15 MIN UPDATE (ROBUST) ===
+minute = now.minute
+current_key = f"{now.hour}:{minute//15}"
 
-        if minute % 15 == 0 and second < 5 and last_update_key != current_key:
-            last_update_key = current_key
-            send_msg(smart_status(price, high, low, trend_dir, structure))
+# trigger within 1-minute window (safe)
+if minute % 15 == 0 and last_update_key != current_key:
+    last_update_key = current_key
+
+    send_msg(smart_status(price, high, low, trend_dir, structure))
 
         time.sleep(60)
 
