@@ -1,7 +1,7 @@
 import requests, os, numpy as np, time, traceback
 from datetime import datetime, timezone, timedelta
 
-print("🔥 BTCUSD BOT ACTIVE (MULTI-STRATEGY ENGINE)")
+print("🔥 BTCUSD FINAL BOT (5 STRATEGY ENGINE)")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -22,146 +22,161 @@ def send_msg(msg):
     except:
         pass
 
-# ================= PRICE (4 APIs) =================
+# ================= PRICE =================
 def get_price():
     global last_price
 
     for _ in range(2):
 
-        # Binance
         try:
-            url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1"
-            data = requests.get(url, timeout=5).json()
+            data = requests.get("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1").json()
             last_price = float(data[-1][4])
             return last_price
-        except:
-            pass
+        except: pass
 
-        # Bybit
         try:
-            url = "https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=1&limit=1"
-            data = requests.get(url, timeout=5).json()
+            data = requests.get("https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=1&limit=1").json()
             last_price = float(data["result"]["list"][0][4])
             return last_price
-        except:
-            pass
+        except: pass
 
-        # Coinbase
         try:
-            url = "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60"
-            data = requests.get(url, timeout=5).json()
+            data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60").json()
             last_price = float(data[0][4])
             return last_price
-        except:
-            pass
+        except: pass
 
-        # Kraken
         try:
-            url = "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1"
-            data = requests.get(url, timeout=5).json()
+            data = requests.get("https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1").json()
             pair = list(data["result"].keys())[0]
             last_price = float(data["result"][pair][-1][4])
             return last_price
-        except:
-            pass
-
-        time.sleep(1)
+        except: pass
 
     return last_price
 
-# ================= MARKET TYPE =================
-def market_type():
-    if len(prices) < 30:
-        return "UNKNOWN"
+# ================= STRATEGIES =================
 
-    change = abs(prices[-1] - prices[-10])
+# 1️⃣ Liquidity Grab
+def liquidity_grab(p):
+    if len(p) < 30: return None, 0, "Liquidity Grab"
+    h, l = max(p[-20:]), min(p[-20:])
+    cur, prev = p[-1], p[-2]
+    score = 0
+    signal = None
 
-    if change > 50:
-        return "TREND"
-    elif change < 15:
-        return "SIDEWAYS"
+    if cur > h and prev < h:
+        score += 20; signal = "SELL"
+    elif cur < l and prev > l:
+        score += 20; signal = "BUY"
+
+    if abs(cur-prev) > 30: score += 20
+    if max(p[-5:]) > max(p[-10:-5]): score += 20
+    if abs(cur-np.mean(p[-5:])) < 20: score += 20
+    if abs(p[-1]-p[-10]) > 50: score += 20
+
+    return signal, score, "Liquidity Grab"
+
+# 2️⃣ Breakout Retest
+def breakout_retest(p):
+    if len(p) < 30: return None, 0, "Breakout Retest"
+    h, l = max(p[-20:]), min(p[-20:])
+    cur, prev = p[-1], p[-2]
+    score = 0; signal = None
+
+    if cur > h: score += 20; signal = "BUY"
+    elif cur < l: score += 20; signal = "SELL"
+
+    if abs(cur-h) < 30 or abs(cur-l) < 30: score += 20
+    if abs(cur-prev) > 25: score += 20
+    if abs(p[-1]-p[-5]) > 40: score += 20
+    if abs(p[-1]-p[-10]) > 60: score += 20
+
+    return signal, score, "Breakout Retest"
+
+# 3️⃣ VWAP Bounce
+def vwap_strategy(p):
+    if len(p) < 20: return None, 0, "VWAP Bounce"
+    vwap = np.mean(p[-20:])
+    cur = p[-1]
+    score = 0; signal = None
+
+    if cur > vwap: signal = "BUY"; score += 20
+    else: signal = "SELL"; score += 20
+
+    if abs(cur-vwap) < 30: score += 20
+    if abs(p[-1]-p[-5]) > 30: score += 20
+    if abs(p[-1]-p[-10]) > 40: score += 20
+    score += 20
+
+    return signal, score, "VWAP Bounce"
+
+# 4️⃣ EMA Pullback
+def ema_strategy(p):
+    if len(p) < 30: return None, 0, "EMA Pullback"
+    ema9 = np.mean(p[-9:])
+    ema21 = np.mean(p[-21:])
+    cur = p[-1]
+
+    score = 0; signal = None
+
+    if ema9 > ema21:
+        signal = "BUY"; score += 20
     else:
-        return "VOLATILE"
+        signal = "SELL"; score += 20
 
-# ================= STRATEGY SCORING =================
-def evaluate_strategy(price):
+    if abs(cur-ema9) < 30: score += 20
+    if abs(p[-1]-p[-5]) > 30: score += 20
+    if abs(p[-1]-p[-10]) > 40: score += 20
+    score += 20
 
-    score = np.random.randint(40, 95)  # simulate logic (can refine later)
+    return signal, score, "EMA Pullback"
 
-    if score >= 80:
-        action = "🔥 STRONG TRADE"
-    elif score >= 65:
-        action = "✅ GOOD"
-    elif score >= 50:
-        action = "⚠️ SKIP"
-    else:
-        action = "❌ NO TRADE"
+# 5️⃣ Range Trap
+def range_trap(p):
+    if len(p) < 30: return None, 0, "Range Trap"
+    h, l = max(p[-20:]), min(p[-20:])
+    cur = p[-1]
+    score = 0; signal = None
 
-    return score, action
+    if cur > h:
+        signal = "SELL"; score += 20
+    elif cur < l:
+        signal = "BUY"; score += 20
 
-# ================= SMART UPDATE =================
-def smart_update(price):
-    mtype = market_type()
+    if abs(p[-1]-p[-5]) < 20: score += 20
+    if abs(cur-h) < 30 or abs(cur-l) < 30: score += 20
+    if abs(p[-1]-p[-10]) < 30: score += 20
+    score += 20
 
-    if mtype == "TREND":
-        trend = "STRONG"
-        bias = "BUY ZONE"
-        win = "40-50%"
-    else:
-        trend = "WEAK"
-        bias = "AVOID"
-        win = "0-40%"
+    return signal, score, "Range Trap"
 
-    return f"""
-📊 SMART MARKET UPDATE (BTCUSD)
+# ================= ENGINE =================
+def strategy_engine(p):
+    strategies = [
+        liquidity_grab,
+        breakout_retest,
+        vwap_strategy,
+        ema_strategy,
+        range_trap
+    ]
 
-Market: {mtype}
-Trend: {trend}
+    best = (None, 0, None)
 
-Price: {round(price,2)}
+    for s in strategies:
+        sig, sc, name = s(p)
+        if sc > best[1]:
+            best = (sig, sc, name)
 
-Bias: {bias}
-Win Rate: {win}
-
-⏳ Waiting for trade setup
-"""
-
-# ================= TRADE =================
-def trade_signal(price, score, action):
-
-    sl = price - 200
-    tp1 = price + 600
-    tp2 = price + 800
-
-    return f"""
-🚨 BTC TRADE SIGNAL
-
-Type: BUY 📈
-Entry: {round(price,2)}
-
-SL: {round(sl,2)}
-TP1: {round(tp1,2)}
-TP2: {round(tp2,2)}
-
-RR: 1:3 🔥
-
-Score: {score}
-Action: {action}
-
-Win Probability:
-TP1 → 70%
-TP2 → 45%
-"""
+    return best
 
 # ================= START =================
-send_msg("🚀 BTC BOT STARTED")
+send_msg("🚀 BTC BOT STARTED (5 STRATEGY ENGINE)")
 
 # ================= LOOP =================
 while True:
     try:
         now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-        print("Running at:", now)
-
         price = get_price()
 
         if price is None:
@@ -178,18 +193,52 @@ while True:
         prices.append(candle_close)
         candle_buffer = []
 
-        # ===== SMART UPDATE EVERY 5 MIN =====
+        signal, score, strategy_name = strategy_engine(prices)
+
+        # ===== SMART UPDATE =====
         if now.minute % 5 == 0:
             key = f"{now.hour}:{now.minute}"
             if last_update_key != key:
                 last_update_key = key
-                send_msg(smart_update(price))
+                send_msg(f"""
+📊 SMART UPDATE (BTCUSD)
 
-        # ===== STRATEGY =====
-        score, action = evaluate_strategy(price)
+Strategy: {strategy_name}
+Score: {score}
 
-        if score >= 65:
-            send_msg(trade_signal(price, score, action))
+Price: {round(price,2)}
+
+⏳ Waiting for setup
+""")
+
+        # ===== TRADE =====
+        if score >= 65 and signal:
+            entry = price
+
+            if signal == "BUY":
+                sl = entry - 200
+                tp1 = entry + 600
+                tp2 = entry + 800
+            else:
+                sl = entry + 200
+                tp1 = entry - 600
+                tp2 = entry - 800
+
+            send_msg(f"""
+🚨 BTC TRADE
+
+Strategy: {strategy_name}
+
+Type: {signal}
+Entry: {round(entry,2)}
+
+SL: {round(sl,2)}
+TP1: {round(tp1,2)}
+TP2: {round(tp2,2)}
+
+Score: {score}
+RR: 1:3 🔥
+""")
 
         time.sleep(60)
 
