@@ -657,7 +657,6 @@ send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
 # ---------------- LOOP ----------------
 while True:
     try:
-        global candle_buffer, last_update_key
 
         now = now_ist()
         price = get_price()
