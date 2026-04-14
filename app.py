@@ -718,5 +718,8 @@ while True:
 
         time.sleep(60)
 
-except Exception as e:print("ERROR:", e) traceback.print_exc() time.sleep(10)
-continue
+except Exception as e:
+    print("ERROR:", e)
+    traceback.print_exc()
+    time.sleep(10)
+    continue
