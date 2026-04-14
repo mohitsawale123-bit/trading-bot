@@ -1,7 +1,7 @@
 import requests, os, numpy as np, time, traceback
 from datetime import datetime, timezone, timedelta
 
-print("🔥 BTCUSD FINAL BOT (5 STRATEGY ENGINE)")
+print("🔥 BTCUSD FINAL BOT (STABLE VERSION)")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -22,48 +22,65 @@ def send_msg(msg):
     except:
         pass
 
-# ================= PRICE =================
+# ================= SAFE PRICE FETCH =================
 def get_price():
     global last_price
 
     for _ in range(2):
 
+        # Binance
         try:
-            data = requests.get("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1").json()
-            last_price = float(data[-1][4])
-            return last_price
-        except: pass
+            r = requests.get("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1", timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list) and len(data) > 0:
+                    last_price = float(data[-1][4])
+                    return last_price
+        except:
+            pass
 
+        # Bybit
         try:
-            data = requests.get("https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=1&limit=1").json()
-            last_price = float(data["result"]["list"][0][4])
-            return last_price
-        except: pass
+            r = requests.get("https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=1&limit=1", timeout=5)
+            data = r.json()
+            if "result" in data and data["result"]["list"]:
+                last_price = float(data["result"]["list"][0][4])
+                return last_price
+        except:
+            pass
 
+        # Coinbase
         try:
-            data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60").json()
-            last_price = float(data[0][4])
-            return last_price
-        except: pass
+            r = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60", timeout=5)
+            data = r.json()
+            if isinstance(data, list) and len(data) > 0:
+                last_price = float(data[0][4])
+                return last_price
+        except:
+            pass
 
+        # Kraken
         try:
-            data = requests.get("https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1").json()
-            pair = list(data["result"].keys())[0]
-            last_price = float(data["result"][pair][-1][4])
-            return last_price
-        except: pass
+            r = requests.get("https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1", timeout=5)
+            data = r.json()
+            if "result" in data:
+                pair = list(data["result"].keys())[0]
+                last_price = float(data["result"][pair][-1][4])
+                return last_price
+        except:
+            pass
+
+        time.sleep(1)
 
     return last_price
 
 # ================= STRATEGIES =================
 
-# 1️⃣ Liquidity Grab
 def liquidity_grab(p):
     if len(p) < 30: return None, 0, "Liquidity Grab"
     h, l = max(p[-20:]), min(p[-20:])
     cur, prev = p[-1], p[-2]
-    score = 0
-    signal = None
+    score = 0; signal = None
 
     if cur > h and prev < h:
         score += 20; signal = "SELL"
@@ -77,7 +94,7 @@ def liquidity_grab(p):
 
     return signal, score, "Liquidity Grab"
 
-# 2️⃣ Breakout Retest
+
 def breakout_retest(p):
     if len(p) < 30: return None, 0, "Breakout Retest"
     h, l = max(p[-20:]), min(p[-20:])
@@ -94,7 +111,7 @@ def breakout_retest(p):
 
     return signal, score, "Breakout Retest"
 
-# 3️⃣ VWAP Bounce
+
 def vwap_strategy(p):
     if len(p) < 20: return None, 0, "VWAP Bounce"
     vwap = np.mean(p[-20:])
@@ -111,7 +128,7 @@ def vwap_strategy(p):
 
     return signal, score, "VWAP Bounce"
 
-# 4️⃣ EMA Pullback
+
 def ema_strategy(p):
     if len(p) < 30: return None, 0, "EMA Pullback"
     ema9 = np.mean(p[-9:])
@@ -132,7 +149,7 @@ def ema_strategy(p):
 
     return signal, score, "EMA Pullback"
 
-# 5️⃣ Range Trap
+
 def range_trap(p):
     if len(p) < 30: return None, 0, "Range Trap"
     h, l = max(p[-20:]), min(p[-20:])
@@ -161,25 +178,28 @@ def strategy_engine(p):
         range_trap
     ]
 
-    best = (None, 0, None)
+    best_signal, best_score, best_name = None, 0, None
 
-    for s in strategies:
-        sig, sc, name = s(p)
-        if sc > best[1]:
-            best = (sig, sc, name)
+    for strat in strategies:
+        sig, sc, name = strat(p)
+        if sc > best_score:
+            best_signal, best_score, best_name = sig, sc, name
 
-    return best
+    return best_signal, best_score, best_name
 
 # ================= START =================
-send_msg("🚀 BTC BOT STARTED (5 STRATEGY ENGINE)")
+send_msg("🚀 BTC BOT STARTED (FINAL STABLE VERSION)")
 
 # ================= LOOP =================
 while True:
     try:
+        print("BOT LOOP RUNNING...")
+
         now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         price = get_price()
 
         if price is None:
+            print("Price fetch failed")
             time.sleep(10)
             continue
 
@@ -225,7 +245,7 @@ Price: {round(price,2)}
                 tp2 = entry - 800
 
             send_msg(f"""
-🚨 BTC TRADE
+🚨 BTC TRADE SIGNAL
 
 Strategy: {strategy_name}
 
