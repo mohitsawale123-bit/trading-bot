@@ -1,7 +1,7 @@
 import requests, os, numpy as np, time, traceback
 from datetime import datetime, timezone, timedelta
 
-print("🔥 BTCUSD FINAL BOT (STABLE VERSION)")
+print("🔥 BTCUSD FINAL BOT (SMART UPDATE FIXED)")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -28,7 +28,6 @@ def get_price():
 
     for _ in range(2):
 
-        # Binance
         try:
             r = requests.get("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1", timeout=5)
             if r.status_code == 200:
@@ -36,30 +35,24 @@ def get_price():
                 if isinstance(data, list) and len(data) > 0:
                     last_price = float(data[-1][4])
                     return last_price
-        except:
-            pass
+        except: pass
 
-        # Bybit
         try:
             r = requests.get("https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=1&limit=1", timeout=5)
             data = r.json()
             if "result" in data and data["result"]["list"]:
                 last_price = float(data["result"]["list"][0][4])
                 return last_price
-        except:
-            pass
+        except: pass
 
-        # Coinbase
         try:
             r = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60", timeout=5)
             data = r.json()
             if isinstance(data, list) and len(data) > 0:
                 last_price = float(data[0][4])
                 return last_price
-        except:
-            pass
+        except: pass
 
-        # Kraken
         try:
             r = requests.get("https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1", timeout=5)
             data = r.json()
@@ -67,8 +60,7 @@ def get_price():
                 pair = list(data["result"].keys())[0]
                 last_price = float(data["result"][pair][-1][4])
                 return last_price
-        except:
-            pass
+        except: pass
 
         time.sleep(1)
 
@@ -188,7 +180,7 @@ def strategy_engine(p):
     return best_signal, best_score, best_name
 
 # ================= START =================
-send_msg("🚀 BTC BOT STARTED (FINAL STABLE VERSION)")
+send_msg("🚀 BTC BOT STARTED (SMART UPDATE FIXED)")
 
 # ================= LOOP =================
 while True:
@@ -199,7 +191,6 @@ while True:
         price = get_price()
 
         if price is None:
-            print("Price fetch failed")
             time.sleep(10)
             continue
 
@@ -215,12 +206,14 @@ while True:
 
         signal, score, strategy_name = strategy_engine(prices)
 
-        # ===== SMART UPDATE =====
-        if now.minute % 5 == 0:
-            key = f"{now.hour}:{now.minute}"
-            if last_update_key != key:
-                last_update_key = key
-                send_msg(f"""
+        # ===== SMART UPDATE FIX (NO MISS) =====
+        current_slot = now.minute // 5
+        slot_key = f"{now.hour}:{current_slot}"
+
+        if last_update_key != slot_key:
+            last_update_key = slot_key
+
+            send_msg(f"""
 📊 SMART UPDATE (BTCUSD)
 
 Strategy: {strategy_name}
