@@ -52,7 +52,7 @@ def get_price() -> float | None:
         # Binance
         try:
             r = requests.get(
-                "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1",
+                "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
                 timeout=5,
             )
             if r.status_code == 200:
@@ -66,7 +66,7 @@ def get_price() -> float | None:
         # Bybit
         try:
             r = requests.get(
-                "https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=1&limit=1",
+                "https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT",
                 timeout=5,
             )
             data = r.json()
@@ -83,7 +83,7 @@ def get_price() -> float | None:
         # Coinbase
         try:
             r = requests.get(
-                "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60",
+                "https://api.exchange.coinbase.com/products/BTC-USD/ticker",
                 timeout=5,
             )
             data = r.json()
