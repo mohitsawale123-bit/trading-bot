@@ -718,8 +718,8 @@ while True:
 
         time.sleep(60)
 
-    except Exception as e:
+   except Exception as e:
     print("ERROR:", e)
     traceback.print_exc()
     time.sleep(10)
-    continue   # ✅ ADD THIS LINE
+    continue
