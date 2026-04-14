@@ -657,7 +657,7 @@ send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
 # ---------------- LOOP ----------------
 while True:
     try:
-        global candle_buffer, last_update_key   # ✅ ADD THIS LINE
+        global candle_buffer, last_update_key
 
         now = now_ist()
         price = get_price()
@@ -699,27 +699,28 @@ while True:
         # Step 3
         can_trade, _reason = passes_trade_filter(best, price)
 
-        # exact 5 min smart update using your logic
+        # Smart update
         now_minute = now.minute
         if now_minute % 5 == 0:
             current_key = f"{now.hour}:{now_minute}"
             if last_update_key != current_key:
                 last_update_key = current_key
                 last_candle = get_last_5m_candle()
+
                 if can_trade:
                     send_msg(trade_signal_message(price, best, market_dir))
                 else:
                     send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
 
-        # anytime trade if strong/good and filter passes
+        # Trade
         if can_trade and best["score"] >= 50:
             send_msg(trade_signal_message(price, best, market_dir))
             time.sleep(60)
 
         time.sleep(60)
 
-except Exception as e:
-    print("ERROR:", e)
-    traceback.print_exc()
-    time.sleep(10)
-    continue
+    except Exception as e:   # ✅ NOW CORRECT
+        print("ERROR:", e)
+        traceback.print_exc()
+        time.sleep(10)
+        continue
