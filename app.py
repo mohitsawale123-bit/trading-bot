@@ -17,6 +17,9 @@ IST_OFFSET = timedelta(hours=5, minutes=30)
 last_update_key = None
 last_price = None
 
+prices = []
+candle_buffer = []   # ✅ ADD THIS LINE
+
 # 1-minute closes from APIs
 one_min_closes = []
 
