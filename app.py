@@ -18,13 +18,14 @@ last_update_key = None
 last_price = None
 
 prices = []
-candle_buffer = []   # ✅ ADD THIS LINE
 
 # 1-minute closes from APIs
 one_min_closes = []
 
 # built 5-minute candles
 candles_5m = []  # each item: {"open","high","low","close","time"}
+
+candle_buffer = []   # ✅ ADD THIS LINE
 
 # ---------------- TELEGRAM ----------------
 def send_msg(msg: str) -> None:
