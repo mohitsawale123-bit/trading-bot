@@ -8,7 +8,7 @@ import numpy as np
 import requests
 
 print("🔥 BTCUSD FINAL BOT (STEP FLOW + 5 STRATEGIES)")
-MODE = "BACKTEST"   # LIVE / BACKTEST / DATA
+MODE = "LIVE"        # LIVE / BACKTEST / HYBRID
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
@@ -774,42 +774,42 @@ def run_backtest():
         price = candles_1m[-1]["close"]
 
         best = strategy_engine()
-        print("DEBUG:", best)
         can_trade, _ = passes_trade_filter(best, price)
 
-        if best["signal"] is not None:
-            risk = abs(price - best["sl"])
-            tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
+      # 🔥 SHADOW BACKTEST TRACKING
+if best["signal"] is not None:
 
-            result = None
+    risk = abs(price - best["sl"])
+    tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
 
-            future_candles = df_1m[i:i+5]
-            for future in future_candles:
-                if best["signal"] == "BUY":
-                    if future["low"] <= best["sl"]:
-                        result = -1
-                        break
-                    if future["high"] >= tp:
-                        result = 2
-                        break
-                else:
-                    if future["high"] >= best["sl"]:
-                        result = -1
-                        break
-                    if future["low"] <= tp:
-                        result = 2
-                        break
+    # 🔥 MODE SWITCH
+    if MODE == "BACKTEST":
+        future_candles = df_1m[i:i+5]
 
-            if result:
-                pnl = balance * 0.01 * result
-                balance += pnl
-                trades.append(result)
+    else:  # LIVE or HYBRID
+        future_candles = get_klines("1m", 5)
 
-    print("📊 BACKTEST RESULT")
-    print("Final Balance:", balance)
-    print("Total Trades:", len(trades))
-    print("Win Rate:", trades.count(2)/len(trades)*100 if trades else 0)
+    result = None
 
+    for f in future_candles:
+        if best["signal"] == "BUY":
+            if f["low"] <= best["sl"]:
+                result = -1
+                break
+            if f["high"] >= tp:
+                result = 2
+                break
+        else:
+            if f["high"] >= best["sl"]:
+                result = -1
+                break
+            if f["low"] <= tp:
+                result = 2
+                break
+
+    if result:
+        print(f"📊 TRADE RESULT: {best['signal']} → {result}R")
+        
 if MODE == "BACKTEST":
     run_backtest()
     exit()
