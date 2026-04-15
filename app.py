@@ -152,49 +152,45 @@ def update_csv(candles, filename):
     df.to_csv(path, index=False)
 
 def load_csv_data():
-    import csv
-    import os
-    from datetime import datetime
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    def read_csv_file(filename):
+        import csv
+        from datetime import datetime
+        import os
 
-def read_csv_file(filename):
-    import csv
-    from datetime import datetime
-    import os
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(BASE_DIR, filename)
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(BASE_DIR, filename)
+        data = []
 
-    data = []
+        with open(path, 'r') as f:
+            reader = csv.DictReader(f)
 
-    with open(path, 'r') as f:
-        reader = csv.DictReader(f)
+            for row in reader:
+                ts = None
 
-        for row in reader:
+                if "timestamp" in row:
+                    ts = row["timestamp"]
+                elif "time" in row:
+                    ts = row["time"]
+                elif "date" in row:
+                    ts = row["date"]
 
-            # 🔥 handle ALL possible cases safely
-            ts = None
+                if ts is None:
+                    continue
 
-            if "timestamp" in row:
-                ts = row["timestamp"]
-            elif "time" in row:
-                ts = row["time"]
-            elif "date" in row:
-                ts = row["date"]
+                data.append({
+                    "timestamp": datetime.fromisoformat(ts),
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
+                    "close": float(row["close"]),
+                })
 
-            if ts is None:
-                continue  # skip bad rows
+        return data   # ✅ ONLY THIS inside read_csv_file
 
-            data.append({
-                "timestamp": datetime.fromisoformat(ts),
-                "open": float(row["open"]),
-                "high": float(row["high"]),
-                "low": float(row["low"]),
-                "close": float(row["close"]),
-            })
 
-    return data
+    # ✅ THIS MUST BE OUTSIDE read_csv_file
     df_1m = read_csv_file("btc_1m.csv")
     df_5m = read_csv_file("btc_5m.csv")
 
