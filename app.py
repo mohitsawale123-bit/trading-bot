@@ -818,8 +818,8 @@ print("Win Rate:", trades.count(2)/len(trades)*100 if trades else 0)
 # ---------------- MODE CONTROL ----------------
 
 if MODE == "BACKTEST":
-run_backtest()
-exit()
+    run_backtest()
+    exit()
 
 # ---------------- LIVE START ----------------
 
