@@ -120,24 +120,30 @@ def get_klines(interval="1m", limit=100):
 
     return []
 def update_csv(candles, filename):
-    import pandas as pd
+    import csv
     import os
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     path = os.path.join(BASE_DIR, filename)
 
-    new_df = pd.DataFrame(candles)
+    file_exists = os.path.isfile(path)
 
-    # Rename 'time' → 'timestamp' if needed
-    if "time" in new_df.columns:
-        new_df = new_df.rename(columns={"time": "timestamp"})
+    # write data
+    with open(path, "a", newline="") as f:
+        writer = None
 
-    if os.path.exists(path):
-        old_df = pd.read_csv(path)
-        df = pd.concat([old_df, new_df])
-    else:
-        df = new_df
+        for c in candles:
+            # rename time → timestamp
+            if "time" in c:
+                c["timestamp"] = c.pop("time")
 
+            if writer is None:
+                writer = csv.DictWriter(f, fieldnames=c.keys())
+
+                if not file_exists:
+                    writer.writeheader()
+
+            writer.writerow(c)
     # Remove duplicates
     df = df.drop_duplicates(subset=["timestamp"])
 
@@ -147,16 +153,30 @@ def update_csv(candles, filename):
     df.to_csv(path, index=False)
 
 def load_csv_data():
-    import pandas as pd
+    import csv
     import os
+    from datetime import datetime
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-    df_1m = pd.read_csv(os.path.join(BASE_DIR, "btc_1m.csv"))
-    df_5m = pd.read_csv(os.path.join(BASE_DIR, "btc_5m.csv"))
+    def read_csv_file(filename):
+        data = []
+        path = os.path.join(BASE_DIR, filename)
 
-    df_1m['timestamp'] = pd.to_datetime(df_1m['timestamp'])
-    df_5m['timestamp'] = pd.to_datetime(df_5m['timestamp'])
+        with open(path, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                data.append({
+                    "timestamp": datetime.fromisoformat(row["timestamp"]),
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
+                    "close": float(row["close"]),
+                })
+        return data
+
+    df_1m = read_csv_file("btc_1m.csv")
+    df_5m = read_csv_file("btc_5m.csv")
 
     return df_1m, df_5m
 # ---------------- HELPERS ----------------
@@ -710,7 +730,7 @@ def run_backtest():
         candles_5m = []
 
         for j in range(i - 100, i):
-            row = df_1m.iloc[j]
+            row = df_1m[j]
             candles_1m.append({
                 "open": row["open"],
                 "high": row["high"],
@@ -720,7 +740,7 @@ def run_backtest():
             })
 
         for j in range(i//5 - 100, i//5):
-            row = df_5m.iloc[j]
+            row = df_5m[j]
             candles_5m.append({
                 "open": row["open"],
                 "high": row["high"],
