@@ -8,7 +8,7 @@ import numpy as np
 import requests
 
 print("🔥 BTCUSD FINAL BOT (STEP FLOW + 5 STRATEGIES)")
-
+MODE = "LIVE"   # LIVE / BACKTEST / DATA
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
