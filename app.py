@@ -47,46 +47,48 @@ def now_ist() -> datetime:
 # ---------------- CHART FETCH (PRIMARY + BACKUP) ----------------
 def get_klines(interval="1m", limit=100):
 
-    # 1️⃣ PRIMARY — BINANCE (BEST)
-    try:
-        r = requests.get(
-            f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval={interval}&limit={limit}",
-            timeout=5,
-        )
-        if r.status_code == 200:
+    for _ in range(2):  # retry loop
+
+        # ---------------- BINANCE ----------------
+        try:
+            r = requests.get(
+                f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval={interval}&limit={limit}",
+                timeout=10,   # 🔥 increased timeout
+            )
+
             data = r.json()
 
-            candles = []
-            for d in data:
-                candles.append({
-                    "open": float(d[1]),
-                    "high": float(d[2]),
-                    "low": float(d[3]),
-                    "close": float(d[4]),
-                    "time": d[0]
-                })
-
-            if candles:
+            if isinstance(data, list) and len(data) > 0:
+                candles = []
+                for d in data:
+                    candles.append({
+                        "open": float(d[1]),
+                        "high": float(d[2]),
+                        "low": float(d[3]),
+                        "close": float(d[4]),
+                        "time": d[0]
+                    })
                 return candles
 
-    except Exception as e:
-        print("Binance Kline failed:", e)
+            else:
+                print("⚠️ Binance bad response:", data)
 
-    # 2️⃣ BACKUP — BYBIT (VERY RELIABLE)
-    try:
-        interval_map = {"1m": "1", "5m": "5"}
+        except Exception as e:
+            print("❌ Binance error:", e)
 
-        r = requests.get(
-            f"https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval={interval_map.get(interval, '1')}&limit={limit}",
-            timeout=5,
-        )
-        if r.status_code == 200:
+        # ---------------- BYBIT ----------------
+        try:
+            interval_map = {"1m": "1", "5m": "5"}
+
+            r = requests.get(
+                f"https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval={interval_map.get(interval,'1')}&limit={limit}",
+                timeout=10,
+            )
+
             data = r.json()
 
             if data.get("result", {}).get("list"):
                 candles = []
-
-                # Bybit returns reversed data → fix order
                 for d in reversed(data["result"]["list"]):
                     candles.append({
                         "open": float(d[1]),
@@ -95,14 +97,17 @@ def get_klines(interval="1m", limit=100):
                         "close": float(d[4]),
                         "time": int(d[0])
                     })
-
                 return candles
 
-    except Exception as e:
-        print("Bybit Kline failed:", e)
+            else:
+                print("⚠️ Bybit bad response:", data)
+
+        except Exception as e:
+            print("❌ Bybit error:", e)
+
+        time.sleep(2)
 
     return []
-
 # ---------------- HELPERS ----------------
 def mean_safe(arr):
     return float(np.mean(arr)) if len(arr) > 0 else 0.0
