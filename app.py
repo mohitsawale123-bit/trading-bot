@@ -738,49 +738,50 @@ Action: {action}
 # ---------------- START ----------------
 
 def run_backtest():
+
+    global candles_5m, one_min_closes   # ✅ MOVE HERE (TOP)
+
     df_1m, df_5m = load_csv_data()
 
-balance = 100
-trades = []
+    balance = 100
+    trades = []
 
-for i in range(100, len(df_1m)):
+    for i in range(100, len(df_1m)):
 
-    global candles_5m, one_min_closes
+        candles_1m = []
+        candles_5m = []
 
-    candles_1m = []
-    candles_5m = []
+        # Build 1m candles
+        for j in range(i - 100, i):
+            row = df_1m[j]
+            candles_1m.append({
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "time": row["timestamp"]
+            })
 
-    # Build 1m candles
-    for j in range(i - 100, i):
-        row = df_1m[j]
-        candles_1m.append({
-            "open": row["open"],
-            "high": row["high"],
-            "low": row["low"],
-            "close": row["close"],
-            "time": row["timestamp"]
-        })
+        # Build 5m candles
+        for j in range(i//5 - 100, i//5):
+            row = df_5m[j]
+            candles_5m.append({
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "time": row["timestamp"]
+            })
 
-    # Build 5m candles
-    for j in range(i//5 - 100, i//5):
-        row = df_5m[j]
-        candles_5m.append({
-            "open": row["open"],
-            "high": row["high"],
-            "low": row["low"],
-            "close": row["close"],
-            "time": row["timestamp"]
-        })
+        one_min_closes = [c["close"] for c in candles_1m]
 
-    one_min_closes = [c["close"] for c in candles_1m]
-    price = candles_1m[-1]["close"]
+        price = candles_1m[-1]["close"]
 
-    best = strategy_engine()
+        best = strategy_engine()
 
-    # Skip if no signal
-    if best["signal"] is None:
-        continue
-
+        if best["signal"] is None:
+            continue
+            
     risk = abs(price - best["sl"])
     tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
 
