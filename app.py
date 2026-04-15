@@ -740,7 +740,6 @@ Action: {action}
 def run_backtest():
 df_1m, df_5m = load_csv_data()
 
-```
 balance = 100
 trades = []
 
