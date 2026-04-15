@@ -48,64 +48,78 @@ def now_ist() -> datetime:
 def get_klines(interval="1m", limit=100):
 
     for _ in range(2):  # retry loop
+def get_klines(interval="1m", limit=100):
 
-        # ---------------- BINANCE ----------------
-        try:
-            r = requests.get(
-                f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval={interval}&limit={limit}",
-                timeout=10,   # 🔥 increased timeout
-            )
+    # ---------------- COINBASE (PRIMARY) ----------------
+    try:
+        granularity_map = {
+            "1m": 60,
+            "5m": 300
+        }
 
-            data = r.json()
+        r = requests.get(
+            f"https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity={granularity_map.get(interval, 60)}",
+            timeout=10,
+        )
 
-            if isinstance(data, list) and len(data) > 0:
-                candles = []
-                for d in data:
-                    candles.append({
-                        "open": float(d[1]),
-                        "high": float(d[2]),
-                        "low": float(d[3]),
-                        "close": float(d[4]),
-                        "time": d[0]
-                    })
-                return candles
+        data = r.json()
 
-            else:
-                print("⚠️ Binance bad response:", data)
+        if isinstance(data, list) and len(data) > 0:
+            candles = []
 
-        except Exception as e:
-            print("❌ Binance error:", e)
+            # Coinbase gives latest first → reverse
+            for d in reversed(data[-limit:]):
+                candles.append({
+                    "open": float(d[3]),
+                    "high": float(d[2]),
+                    "low": float(d[1]),
+                    "close": float(d[4]),
+                    "time": d[0]
+                })
 
-        # ---------------- BYBIT ----------------
-        try:
-            interval_map = {"1m": "1", "5m": "5"}
+            return candles
 
-            r = requests.get(
-                f"https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval={interval_map.get(interval,'1')}&limit={limit}",
-                timeout=10,
-            )
+        else:
+            print("⚠️ Coinbase bad response:", data)
 
-            data = r.json()
+    except Exception as e:
+        print("❌ Coinbase error:", e)
 
-            if data.get("result", {}).get("list"):
-                candles = []
-                for d in reversed(data["result"]["list"]):
-                    candles.append({
-                        "open": float(d[1]),
-                        "high": float(d[2]),
-                        "low": float(d[3]),
-                        "close": float(d[4]),
-                        "time": int(d[0])
-                    })
-                return candles
+    # ---------------- KRAKEN (BACKUP) ----------------
+    try:
+        interval_map = {
+            "1m": 1,
+            "5m": 5
+        }
 
-            else:
-                print("⚠️ Bybit bad response:", data)
+        r = requests.get(
+            f"https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval={interval_map.get(interval,1)}",
+            timeout=10,
+        )
 
-        except Exception as e:
-            print("❌ Bybit error:", e)
+        data = r.json()
 
-        time.sleep(2)
+        if isinstance(data, dict) and "result" in data:
+            pair = [k for k in data["result"].keys() if k != "last"][0]
+            rows = data["result"][pair]
+
+            candles = []
+            for d in rows[-limit:]:
+                candles.append({
+                    "open": float(d[1]),
+                    "high": float(d[2]),
+                    "low": float(d[3]),
+                    "close": float(d[4]),
+                    "time": int(d[0])
+                })
+
+            return candles
+
+        else:
+            print("⚠️ Kraken bad response:", data)
+
+    except Exception as e:
+        print("❌ Kraken error:", e)
 
     return []
 # ---------------- HELPERS ----------------
