@@ -736,139 +736,152 @@ Action: {action}
 
 
 # ---------------- START ----------------
+
 def run_backtest():
-    df_1m, df_5m = load_csv_data()
+df_1m, df_5m = load_csv_data()
 
-    balance = 100
-    trades = []
+```
+balance = 100
+trades = []
 
-    for i in range(100, len(df_1m)):
+for i in range(100, len(df_1m)):
 
-        global candles_5m, one_min_closes
+    global candles_5m, one_min_closes
 
-        candles_1m = []
-        candles_5m = []
+    candles_1m = []
+    candles_5m = []
 
-        for j in range(i - 100, i):
-            row = df_1m[j]
-            candles_1m.append({
-                "open": row["open"],
-                "high": row["high"],
-                "low": row["low"],
-                "close": row["close"],
-                "time": row["timestamp"]
-            })
+    # Build 1m candles
+    for j in range(i - 100, i):
+        row = df_1m[j]
+        candles_1m.append({
+            "open": row["open"],
+            "high": row["high"],
+            "low": row["low"],
+            "close": row["close"],
+            "time": row["timestamp"]
+        })
 
-        for j in range(i//5 - 100, i//5):
-            row = df_5m[j]
-            candles_5m.append({
-                "open": row["open"],
-                "high": row["high"],
-                "low": row["low"],
-                "close": row["close"],
-                "time": row["timestamp"]
-            })
+    # Build 5m candles
+    for j in range(i//5 - 100, i//5):
+        row = df_5m[j]
+        candles_5m.append({
+            "open": row["open"],
+            "high": row["high"],
+            "low": row["low"],
+            "close": row["close"],
+            "time": row["timestamp"]
+        })
 
-        one_min_closes = [c["close"] for c in candles_1m]
+    one_min_closes = [c["close"] for c in candles_1m]
+    price = candles_1m[-1]["close"]
 
-        price = candles_1m[-1]["close"]
+    best = strategy_engine()
 
-        best = strategy_engine()
-        can_trade, _ = passes_trade_filter(best, price)
-
-      # 🔥 SHADOW BACKTEST TRACKING
-if best["signal"] is not None:
+    # ❌ skip if no signal
+    if best["signal"] is None:
+        continue
 
     risk = abs(price - best["sl"])
     tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
 
-    # 🔥 MODE SWITCH
-    if MODE == "BACKTEST":
-        future_candles = df_1m[i:i+5]
-
-    else:  # LIVE or HYBRID
-        future_candles = get_klines("1m", 5)
-
     result = None
 
-    for f in future_candles:
+    # ✅ historical future candles ONLY
+    future_candles = df_1m[i:i+5]
+
+    for future in future_candles:
         if best["signal"] == "BUY":
-            if f["low"] <= best["sl"]:
+            if future["low"] <= best["sl"]:
                 result = -1
                 break
-            if f["high"] >= tp:
+            if future["high"] >= tp:
                 result = 2
                 break
         else:
-            if f["high"] >= best["sl"]:
+            if future["high"] >= best["sl"]:
                 result = -1
                 break
-            if f["low"] <= tp:
+            if future["low"] <= tp:
                 result = 2
                 break
 
     if result:
-        print(f"📊 TRADE RESULT: {best['signal']} → {result}R")
-        
+        pnl = balance * 0.01 * result
+        balance += pnl
+        trades.append(result)
+
+print("📊 BACKTEST RESULT")
+print("Final Balance:", balance)
+print("Total Trades:", len(trades))
+print("Win Rate:", trades.count(2)/len(trades)*100 if trades else 0)
+```
+
+# ---------------- MODE CONTROL ----------------
+
 if MODE == "BACKTEST":
-    run_backtest()
-    exit()
+run_backtest()
+exit()
+
+# ---------------- LIVE START ----------------
 
 send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
 
 # ---------------- LOOP ----------------
+
 while True:
-    try:
-        now = now_ist()
+try:
+now = now_ist()
 
-        candles_1m = get_klines("1m", 100)
-        candles_5m = get_klines("5m", 100)
+```
+    candles_1m = get_klines("1m", 100)
+    candles_5m = get_klines("5m", 100)
 
-        if not candles_1m or not candles_5m:
-            time.sleep(10)
-            continue
-
-        one_min_closes = [c["close"] for c in candles_1m]
-        price = candles_1m[-1]["close"]
-
-        print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
-
-        # STEP 1 — Strategy
-        best = strategy_engine()
-
-        # STEP 2 — Filter
-        can_trade, _ = passes_trade_filter(best, price)
-
-        # STEP 3 — Signal print (HYBRID tracking)
-        if best["signal"] is not None:
-            risk = abs(price - best["sl"])
-            tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
-
-            print(f"📊 SIGNAL: {best['signal']} | SL: {best['sl']} | TP: {tp}")
-
-        # STEP 4 — LIVE TRADE EXECUTION (ONLY ONCE)
-        if MODE in ["LIVE", "HYBRID"] and can_trade and best["score"] >= 65:
-            send_msg(trade_signal_message(price, best, market_dir))
-
-        # STEP 5 — SMART UPDATE (every 5 min)
-        now_minute = now.minute
-        if now_minute % 5 == 0:
-            current_key = f"{now.hour}:{now_minute}"
-
-            if last_update_key != current_key:
-                last_update_key = current_key
-                last_candle = get_last_5m_candle()
-
-                if can_trade:
-                    send_msg(trade_signal_message(price, best, market_dir))
-                else:
-                    send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
-
-        # LOOP CONTROL
-        time.sleep(30)
-
-    except Exception as e:
-        print("ERROR:", e)
-        traceback.print_exc()
+    if not candles_1m or not candles_5m:
         time.sleep(10)
         continue
+
+    one_min_closes = [c["close"] for c in candles_1m]
+    price = candles_1m[-1]["close"]
+
+    print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
+
+    # STEP 1 — Strategy
+    best = strategy_engine()
+
+    # STEP 2 — Filter
+    can_trade, _ = passes_trade_filter(best, price)
+
+    # STEP 3 — Signal print
+    if best["signal"] is not None:
+        risk = abs(price - best["sl"])
+        tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
+
+        print(f"📊 SIGNAL: {best['signal']} | SL: {best['sl']} | TP: {tp}")
+
+    # STEP 4 — Execute trade
+    if MODE in ["LIVE", "HYBRID"] and can_trade and best["score"] >= 65:
+        send_msg(trade_signal_message(price, best, market_dir))
+
+    # STEP 5 — Smart update every 5 min
+    now_minute = now.minute
+    if now_minute % 5 == 0:
+        current_key = f"{now.hour}:{now_minute}"
+
+        if last_update_key != current_key:
+            last_update_key = current_key
+            last_candle = get_last_5m_candle()
+
+            if can_trade:
+                send_msg(trade_signal_message(price, best, market_dir))
+            else:
+                send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
+
+    time.sleep(30)
+
+except Exception as e:
+    print("ERROR:", e)
+    traceback.print_exc()
+    time.sleep(10)
+    continue
+```
