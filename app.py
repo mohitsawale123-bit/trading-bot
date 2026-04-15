@@ -831,55 +831,53 @@ while True:
     try:
         now = now_ist()
 
+        candles_1m = get_klines("1m", 100)
+        candles_5m = get_klines("5m", 100)
 
-    candles_1m = get_klines("1m", 100)
-    candles_5m = get_klines("5m", 100)
+        if not candles_1m or not candles_5m:
+            time.sleep(10)
+            continue
 
-    if not candles_1m or not candles_5m:
+        one_min_closes = [c["close"] for c in candles_1m]
+        price = candles_1m[-1]["close"]
+
+        print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
+
+        # STEP 1 — Strategy
+        best = strategy_engine()
+
+        # STEP 2 — Filter
+        can_trade, _ = passes_trade_filter(best, price)
+
+        # STEP 3 — Signal
+        if best["signal"] is not None:
+            risk = abs(price - best["sl"])
+            tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
+
+            print(f"📊 SIGNAL: {best['signal']} | SL: {best['sl']} | TP: {tp}")
+
+        # STEP 4 — Execute
+        if MODE in ["LIVE", "HYBRID"] and can_trade and best["score"] >= 65:
+            send_msg(trade_signal_message(price, best, market_dir))
+
+        # STEP 5 — Smart update
+        now_minute = now.minute
+        if now_minute % 5 == 0:
+            current_key = f"{now.hour}:{now_minute}"
+
+            if last_update_key != current_key:
+                last_update_key = current_key
+                last_candle = get_last_5m_candle()
+
+                if can_trade:
+                    send_msg(trade_signal_message(price, best, market_dir))
+                else:
+                    send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
+
+        time.sleep(30)
+
+    except Exception as e:
+        print("ERROR:", e)
+        import traceback
+        traceback.print_exc()
         time.sleep(10)
-        continue
-
-    one_min_closes = [c["close"] for c in candles_1m]
-    price = candles_1m[-1]["close"]
-
-    print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
-
-    # STEP 1 — Strategy
-    best = strategy_engine()
-
-    # STEP 2 — Filter
-    can_trade, _ = passes_trade_filter(best, price)
-
-    # STEP 3 — Signal print
-    if best["signal"] is not None:
-        risk = abs(price - best["sl"])
-        tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
-
-        print(f"📊 SIGNAL: {best['signal']} | SL: {best['sl']} | TP: {tp}")
-
-    # STEP 4 — Execute trade
-    if MODE in ["LIVE", "HYBRID"] and can_trade and best["score"] >= 65:
-        send_msg(trade_signal_message(price, best, market_dir))
-
-    # STEP 5 — Smart update every 5 min
-    now_minute = now.minute
-    if now_minute % 5 == 0:
-        current_key = f"{now.hour}:{now_minute}"
-
-        if last_update_key != current_key:
-            last_update_key = current_key
-            last_candle = get_last_5m_candle()
-
-            if can_trade:
-                send_msg(trade_signal_message(price, best, market_dir))
-            else:
-                send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
-
-    time.sleep(30)
-
-except Exception as e:
-    print("ERROR:", e)
-    traceback.print_exc()
-    time.sleep(10)
-    continue
-
