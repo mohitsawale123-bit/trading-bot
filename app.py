@@ -691,6 +691,9 @@ while True:
 
         candles_1m = get_klines("1m", 100)
         candles_5m = get_klines("5m", 100)
+        if MODE == "DATA":
+    update_csv(candles_1m, "btc_1m.csv")
+    update_csv(candles_5m, "btc_5m.csv")
 
         if not candles_1m or not candles_5m:
             print("⚠️ Candle fetch failed")
