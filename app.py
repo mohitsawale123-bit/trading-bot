@@ -1,5 +1,4 @@
 import os
-import csv
 import time
 import math
 import traceback
@@ -15,28 +14,18 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 IST_OFFSET = timedelta(hours=5, minutes=30)
 
-
 last_update_key = None
-last_saved_time_1m = None
-last_saved_time_5m = None
-
-FILE_1M = "btc_1m.csv"
-FILE_5M = "btc_5m.csv"
+last_price = None
 
 prices = []
 
-
-# ---------------- DATA ----------------
+# 1-minute closes from APIs
 one_min_closes = []
 
-candles_1m = load_candles(FILE_1M)   # ✅ NOW CORRECT
-candles_5m = load_candles(FILE_5M)   # ✅ NOW CORRECT
+# built 5-minute candles
+candles_5m = []  # each item: {"open","high","low","close","time"}
 
-last_saved_time_1m = None
-last_saved_time_5m = None
-
-# ---------------- BUFFER ----------------
-candle_buffer = []   # ✅ correct
+candle_buffer = []   # ✅ ADD THIS LINE
 
 # ---------------- TELEGRAM ----------------
 def send_msg(msg: str) -> None:
@@ -54,122 +43,83 @@ def send_msg(msg: str) -> None:
 def now_ist() -> datetime:
     return datetime.now(timezone.utc) + IST_OFFSET
 
-# ================= STORAGE =================
-def save_candle(file, c):
-    file_exists = os.path.isfile(file)
-    with open(file, "a", newline="") as f:
-        w = csv.writer(f)
-        if not file_exists:
-            w.writerow(["time","open","high","low","close"])
-        w.writerow([c["time"], c["open"], c["high"], c["low"], c["close"]])
 
-# ================= API =================
+# ---------------- CHART FETCH (PRIMARY + BACKUP) ----------------
 def get_klines(interval="1m", limit=100):
 
-    # Coinbase
+    # ---------------- COINBASE ----------------
     try:
-        gran = 60 if interval=="1m" else 300
-        r = requests.get(f"https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity={gran}", timeout=10)
-        data = r.json()
+        granularity_map = {
+            "1m": 60,
+            "5m": 300
+        }
 
-        candles = []
-        for d in reversed(data[-limit:]):
-            candles.append({
-                "time": d[0],
-                "open": float(d[3]),
-                "high": float(d[2]),
-                "low": float(d[1]),
-                "close": float(d[4])
-            })
-        return candles
-    except:
-        pass
-
-    # Kraken fallback
-    try:
-        interval_map = {"1m":1,"5m":5}
-        r = requests.get(f"https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval={interval_map[interval]}", timeout=10)
-        data = r.json()
-        pair = [k for k in data["result"] if k!="last"][0]
-
-        candles=[]
-        for d in data["result"][pair][-limit:]:
-            candles.append({
-                "time": d[0],
-                "open": float(d[1]),
-                "high": float(d[2]),
-                "low": float(d[3]),
-                "close": float(d[4])
-            })
-        return candles
-    except:
-        return []
-
-
-def get_live_price():
-    try:
-        r = requests.get("https://api.coinbase.com/v2/prices/BTC-USD/spot", timeout=5)
-        return float(r.json()["data"]["amount"])
-    except:
-        return None
-        # ================= INDICATORS =================
-def ema(values, period):
-    if len(values) < period:
-        return None
-    k = 2/(period+1)
-    ema_val = values[0]
-    for v in values[1:]:
-        ema_val = v*k + ema_val*(1-k)
-    return ema_val
-
-# ---------------- HELPERS ----------------
-def save_candle(filename, candle):
-    file_exists = os.path.isfile(filename)
-
-    with open(filename, mode="a", newline="") as f:
-        writer = csv.writer(f)
-
-        if not file_exists:
-            writer.writerow(["time", "open", "high", "low", "close"])
-
-        writer.writerow([
-            candle["time"],
-            candle["open"],
-            candle["high"],
-            candle["low"],
-            candle["close"]
-        ])
-
-
-def load_candles(filename):
-    if not os.path.isfile(filename):
-        return []
-
-    candles = []
-    with open(filename, mode="r") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            candles.append({
-                "time": int(row["time"]),
-                "open": float(row["open"]),
-                "high": float(row["high"]),
-                "low": float(row["low"]),
-                "close": float(row["close"]),
-            })
-
-    return candles
-
-
-def get_live_price():
-    try:
         r = requests.get(
-            "https://api.coinbase.com/v2/prices/BTC-USD/spot",
-            timeout=5,
+            f"https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity={granularity_map.get(interval, 60)}",
+            timeout=10,
         )
+
         data = r.json()
-        return float(data["data"]["amount"])
-    except:
-        return None
+
+        if isinstance(data, list) and len(data) > 0:
+            candles = []
+
+            for d in reversed(data[-limit:]):
+                candles.append({
+                    "open": float(d[3]),
+                    "high": float(d[2]),
+                    "low": float(d[1]),
+                    "close": float(d[4]),
+                    "time": d[0]
+                })
+
+            return candles
+
+        else:
+            print("⚠️ Coinbase bad response:", data)
+
+    except Exception as e:
+        print("❌ Coinbase error:", e)
+
+    # ---------------- KRAKEN ----------------
+    try:
+        interval_map = {
+            "1m": 1,
+            "5m": 5
+        }
+
+        r = requests.get(
+            f"https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval={interval_map.get(interval,1)}",
+            timeout=10,
+        )
+
+        data = r.json()
+
+        if isinstance(data, dict) and "result" in data:
+            pair = [k for k in data["result"].keys() if k != "last"][0]
+            rows = data["result"][pair]
+
+            candles = []
+
+            for d in rows[-limit:]:
+                candles.append({
+                    "open": float(d[1]),
+                    "high": float(d[2]),
+                    "low": float(d[3]),
+                    "close": float(d[4]),
+                    "time": int(d[0])
+                })
+
+            return candles
+
+        else:
+            print("⚠️ Kraken bad response:", data)
+
+    except Exception as e:
+        print("❌ Kraken error:", e)
+
+    return []
+# ---------------- HELPERS ----------------
 def mean_safe(arr):
     return float(np.mean(arr)) if len(arr) > 0 else 0.0
 
@@ -708,57 +658,57 @@ Action: {action}
 # ---------------- START ----------------
 send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
 
-# ================= LOOP =================
+# ---------------- LOOP ----------------
 while True:
     try:
         now = now_ist()
 
-        c1 = get_klines("1m",100)
-        c5 = get_klines("5m",100)
+        candles_1m = get_klines("1m", 100)
+        candles_5m = get_klines("5m", 100)
 
-        if not c1 or not c5:
-            print("⚠️ Fetch fail")
+        if not candles_1m or not candles_5m:
+            print("⚠️ Candle fetch failed")
             time.sleep(10)
             continue
 
-        # SAVE
-        if c1[-1]["time"] != last_saved_time_1m:
-            save_candle(FILE_1M, c1[-1])
-            last_saved_time_1m = c1[-1]["time"]
+        price = candles_1m[-1]["close"]
 
-        if c5[-1]["time"] != last_saved_time_5m:
-            save_candle(FILE_5M, c5[-1])
-            last_saved_time_5m = c5[-1]["time"]
+        one_min_closes.clear()
+        one_min_closes.extend([c["close"] for c in candles_1m])
 
-        # PRICE
-        live = get_live_price()
-        price = live if live else c1[-1]["close"]
+        print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
 
-        one_min = [x["close"] for x in c1]
+               # Step 1
+        market_type, market_dir = identify_market_type()
 
-        market_type, market_dir = identify_market(one_min)
+        # Step 2
+        best = strategy_engine()
 
-        best = strategy_engine(c5)
+        # Step 3
+        can_trade, _reason = passes_trade_filter(best, price)
 
-        can_trade = trade_filter(best, price)
+        # Smart update
+        now_minute = now.minute
+        if now_minute % 5 == 0:
+            current_key = f"{now.hour}:{now_minute}"
+            if last_update_key != current_key:
+                last_update_key = current_key
+                last_candle = get_last_5m_candle()
 
-        print(f"✅ {now.strftime('%H:%M:%S')} | {price}")
+                if can_trade:
+                    send_msg(trade_signal_message(price, best, market_dir))
+                else:
+                    send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
 
-        # SMART UPDATE
-        if now.minute % 5 == 0:
-            key = f"{now.hour}:{now.minute}"
-            if last_update_key != key:
-                last_update_key = key
-                send_msg(smart_update(price, c5, market_dir, best))
-
-        # TRADE
+      # Trade
         if can_trade and best["score"] >= 65:
-            send_msg(trade_msg(price, best))
+            send_msg(trade_signal_message(price, best, market_dir))
 
+        # LOOP CONTROL
         time.sleep(30)
 
     except Exception as e:
         print("ERROR:", e)
         traceback.print_exc()
         time.sleep(10)
-
+        continue
