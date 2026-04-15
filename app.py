@@ -176,18 +176,30 @@ def load_csv_data():
                 elif "date" in row:
                     ts = row["date"]
 
-                if ts is None:
-                    continue
+                from datetime import datetime
 
-                data.append({
-                    "timestamp": datetime.fromisoformat(ts),
-                    "open": float(row["open"]),
-                    "high": float(row["high"]),
-                    "low": float(row["low"]),
-                    "close": float(row["close"]),
-                })
+if not ts:
+    continue
 
-        return data   # ✅ ONLY THIS inside read_csv_file
+try:
+    dt = datetime.fromisoformat(ts)
+except:
+    try:
+        dt = datetime.strptime(ts, "%d-%m-%Y %H:%M:%S")
+    except:
+        try:
+            dt = datetime.strptime(ts, "%Y/%m/%d %H:%M:%S")
+        except:
+            continue
+
+data.append({
+    "timestamp": dt,
+    "open": float(row["open"]),
+    "high": float(row["high"]),
+    "low": float(row["low"]),
+    "close": float(row["close"]),
+})
+return data   # ✅ ONLY THIS inside read_csv_file
 
 
     # ✅ THIS MUST BE OUTSIDE read_csv_file
