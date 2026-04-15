@@ -783,7 +783,8 @@ def run_backtest():
 
             result = None
 
-            for future in candles_1m[-5:]:
+            future_candles = df_1m[i:i+5]
+            for future in future_candles:
                 if best["signal"] == "BUY":
                     if future["low"] <= best["sl"]:
                         result = -1
