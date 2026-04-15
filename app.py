@@ -47,10 +47,7 @@ def now_ist() -> datetime:
 # ---------------- CHART FETCH (PRIMARY + BACKUP) ----------------
 def get_klines(interval="1m", limit=100):
 
-    for _ in range(2):  # retry loop
-def get_klines(interval="1m", limit=100):
-
-    # ---------------- COINBASE (PRIMARY) ----------------
+    # ---------------- COINBASE ----------------
     try:
         granularity_map = {
             "1m": 60,
@@ -67,7 +64,6 @@ def get_klines(interval="1m", limit=100):
         if isinstance(data, list) and len(data) > 0:
             candles = []
 
-            # Coinbase gives latest first → reverse
             for d in reversed(data[-limit:]):
                 candles.append({
                     "open": float(d[3]),
@@ -85,7 +81,7 @@ def get_klines(interval="1m", limit=100):
     except Exception as e:
         print("❌ Coinbase error:", e)
 
-    # ---------------- KRAKEN (BACKUP) ----------------
+    # ---------------- KRAKEN ----------------
     try:
         interval_map = {
             "1m": 1,
@@ -104,6 +100,7 @@ def get_klines(interval="1m", limit=100):
             rows = data["result"][pair]
 
             candles = []
+
             for d in rows[-limit:]:
                 candles.append({
                     "open": float(d[1]),
