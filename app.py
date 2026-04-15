@@ -828,8 +828,8 @@ send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
 # ---------------- LOOP ----------------
 
 while True:
-try:
-now = now_ist()
+    try:
+    now = now_ist()
 
 ```
     candles_1m = get_klines("1m", 100)
