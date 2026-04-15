@@ -778,7 +778,7 @@ for i in range(100, len(df_1m)):
 
     best = strategy_engine()
 
-    # ❌ skip if no signal
+    # Skip if no signal
     if best["signal"] is None:
         continue
 
@@ -787,7 +787,7 @@ for i in range(100, len(df_1m)):
 
     result = None
 
-    # ✅ historical future candles ONLY
+    # Historical future candles
     future_candles = df_1m[i:i+5]
 
     for future in future_candles:
@@ -816,7 +816,6 @@ print("Final Balance:", balance)
 print("Total Trades:", len(trades))
 print("Win Rate:", trades.count(2)/len(trades)*100 if trades else 0)
 ```
-
 # ---------------- MODE CONTROL ----------------
 
 if MODE == "BACKTEST":
