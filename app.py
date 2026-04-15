@@ -814,7 +814,7 @@ print("📊 BACKTEST RESULT")
 print("Final Balance:", balance)
 print("Total Trades:", len(trades))
 print("Win Rate:", trades.count(2)/len(trades)*100 if trades else 0)
-```
+
 # ---------------- MODE CONTROL ----------------
 
 if MODE == "BACKTEST":
