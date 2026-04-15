@@ -684,14 +684,14 @@ while True:
                 else:
                     send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
 
-       # Trade
-if can_trade and best["score"] >= 50:
-    send_msg(trade_signal_message(price, best, market_dir))
+      # Trade
+        if can_trade and best["score"] >= 65:
+            send_msg(trade_signal_message(price, best, market_dir))
 
-# Loop delay
-time.sleep(30)
+        # LOOP CONTROL
+        time.sleep(30)
 
-    except Exception as e:   # ✅ NOW CORRECT
+    except Exception as e:
         print("ERROR:", e)
         traceback.print_exc()
         time.sleep(10)
