@@ -119,7 +119,7 @@ def get_klines(interval="1m", limit=100):
         print("❌ Kraken error:", e)
 
     return []
-    def update_csv(candles, filename):
+def update_csv(candles, filename):
     import pandas as pd
     import os
 
@@ -141,7 +141,7 @@ def get_klines(interval="1m", limit=100):
     # Remove duplicates
     df = df.drop_duplicates(subset=["timestamp"])
 
-    # Keep only last ~90 days (for 1m data ~130k rows)
+    # Keep only last ~90 days
     df = df.sort_values("timestamp").tail(130000)
 
     df.to_csv(path, index=False)
