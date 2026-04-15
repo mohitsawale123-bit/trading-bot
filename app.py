@@ -774,6 +774,7 @@ def run_backtest():
         price = candles_1m[-1]["close"]
 
         best = strategy_engine()
+        print("DEBUG:", best)
         can_trade, _ = passes_trade_filter(best, price)
 
         if can_trade:
