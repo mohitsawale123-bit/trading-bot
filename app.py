@@ -145,6 +145,20 @@ def update_csv(candles, filename):
     df = df.sort_values("timestamp").tail(130000)
 
     df.to_csv(path, index=False)
+
+def load_csv_data():
+    import pandas as pd
+    import os
+
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+    df_1m = pd.read_csv(os.path.join(BASE_DIR, "btc_1m.csv"))
+    df_5m = pd.read_csv(os.path.join(BASE_DIR, "btc_5m.csv"))
+
+    df_1m['timestamp'] = pd.to_datetime(df_1m['timestamp'])
+    df_5m['timestamp'] = pd.to_datetime(df_5m['timestamp'])
+
+    return df_1m, df_5m
 # ---------------- HELPERS ----------------
 def mean_safe(arr):
     return float(np.mean(arr)) if len(arr) > 0 else 0.0
@@ -682,6 +696,82 @@ Action: {action}
 
 
 # ---------------- START ----------------
+def run_backtest():
+    df_1m, df_5m = load_csv_data()
+
+    balance = 100
+    trades = []
+
+    for i in range(100, len(df_1m)):
+
+        global candles_5m, one_min_closes
+
+        candles_1m = []
+        candles_5m = []
+
+        for j in range(i - 100, i):
+            row = df_1m.iloc[j]
+            candles_1m.append({
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "time": row["timestamp"]
+            })
+
+        for j in range(i//5 - 100, i//5):
+            row = df_5m.iloc[j]
+            candles_5m.append({
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "time": row["timestamp"]
+            })
+
+        one_min_closes = [c["close"] for c in candles_1m]
+
+        price = candles_1m[-1]["close"]
+
+        best = strategy_engine()
+        can_trade, _ = passes_trade_filter(best, price)
+
+        if can_trade:
+            risk = abs(price - best["sl"])
+            tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
+
+            result = None
+
+            for future in candles_1m[-5:]:
+                if best["signal"] == "BUY":
+                    if future["low"] <= best["sl"]:
+                        result = -1
+                        break
+                    if future["high"] >= tp:
+                        result = 2
+                        break
+                else:
+                    if future["high"] >= best["sl"]:
+                        result = -1
+                        break
+                    if future["low"] <= tp:
+                        result = 2
+                        break
+
+            if result:
+                pnl = balance * 0.01 * result
+                balance += pnl
+                trades.append(result)
+
+    print("📊 BACKTEST RESULT")
+    print("Final Balance:", balance)
+    print("Total Trades:", len(trades))
+    print("Win Rate:", trades.count(2)/len(trades)*100 if trades else 0)
+
+if MODE == "BACKTEST":
+    run_backtest()
+    exit()
+
 send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
 
 # ---------------- LOOP ----------------
