@@ -831,7 +831,7 @@ while True:
     try:
         now = now_ist()
 
-```
+
     candles_1m = get_klines("1m", 100)
     candles_5m = get_klines("5m", 100)
 
@@ -882,4 +882,4 @@ except Exception as e:
     traceback.print_exc()
     time.sleep(10)
     continue
-```
+
