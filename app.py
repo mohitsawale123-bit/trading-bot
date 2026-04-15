@@ -119,6 +119,32 @@ def get_klines(interval="1m", limit=100):
         print("❌ Kraken error:", e)
 
     return []
+    def update_csv(candles, filename):
+    import pandas as pd
+    import os
+
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(BASE_DIR, filename)
+
+    new_df = pd.DataFrame(candles)
+
+    # Rename 'time' → 'timestamp' if needed
+    if "time" in new_df.columns:
+        new_df = new_df.rename(columns={"time": "timestamp"})
+
+    if os.path.exists(path):
+        old_df = pd.read_csv(path)
+        df = pd.concat([old_df, new_df])
+    else:
+        df = new_df
+
+    # Remove duplicates
+    df = df.drop_duplicates(subset=["timestamp"])
+
+    # Keep only last ~90 days (for 1m data ~130k rows)
+    df = df.sort_values("timestamp").tail(130000)
+
+    df.to_csv(path, index=False)
 # ---------------- HELPERS ----------------
 def mean_safe(arr):
     return float(np.mean(arr)) if len(arr) > 0 else 0.0
