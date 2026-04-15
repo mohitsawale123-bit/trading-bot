@@ -1,4 +1,5 @@
 import os
+import csv
 import time
 import math
 import traceback
@@ -19,13 +20,21 @@ last_price = None
 
 prices = []
 
-# 1-minute closes from APIs
+# ---------------- FILE PATH FIRST ----------------
+FILE_1M = "btc_1m.csv"
+FILE_5M = "btc_5m.csv"
+
+# ---------------- DATA ----------------
 one_min_closes = []
 
-# built 5-minute candles
-candles_5m = []  # each item: {"open","high","low","close","time"}
+candles_1m = load_candles(FILE_1M)   # ✅ NOW CORRECT
+candles_5m = load_candles(FILE_5M)   # ✅ NOW CORRECT
 
-candle_buffer = []   # ✅ ADD THIS LINE
+last_saved_time_1m = None
+last_saved_time_5m = None
+
+# ---------------- BUFFER ----------------
+candle_buffer = []   # ✅ correct
 
 # ---------------- TELEGRAM ----------------
 def send_msg(msg: str) -> None:
@@ -120,6 +129,53 @@ def get_klines(interval="1m", limit=100):
 
     return []
 # ---------------- HELPERS ----------------
+def save_candle(filename, candle):
+    file_exists = os.path.isfile(filename)
+
+    with open(filename, mode="a", newline="") as f:
+        writer = csv.writer(f)
+
+        if not file_exists:
+            writer.writerow(["time", "open", "high", "low", "close"])
+
+        writer.writerow([
+            candle["time"],
+            candle["open"],
+            candle["high"],
+            candle["low"],
+            candle["close"]
+        ])
+
+
+def load_candles(filename):
+    if not os.path.isfile(filename):
+        return []
+
+    candles = []
+    with open(filename, mode="r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            candles.append({
+                "time": int(row["time"]),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+            })
+
+    return candles
+
+
+def get_live_price():
+    try:
+        r = requests.get(
+            "https://api.coinbase.com/v2/prices/BTC-USD/spot",
+            timeout=5,
+        )
+        data = r.json()
+        return float(data["data"]["amount"])
+    except:
+        return None
 def mean_safe(arr):
     return float(np.mean(arr)) if len(arr) > 0 else 0.0
 
@@ -666,19 +722,34 @@ while True:
         candles_1m = get_klines("1m", 100)
         candles_5m = get_klines("5m", 100)
 
+        # -------- SAVE DATA --------
+        if candles_1m:
+            if candles_1m[-1]["time"] != last_saved_time_1m:
+                save_candle(FILE_1M, candles_1m[-1])
+                last_saved_time_1m = candles_1m[-1]["time"]
+
+        if candles_5m:
+            if candles_5m[-1]["time"] != last_saved_time_5m:
+                save_candle(FILE_5M, candles_5m[-1])
+                last_saved_time_5m = candles_5m[-1]["time"]
+
+        # -------- FAIL SAFE --------
         if not candles_1m or not candles_5m:
             print("⚠️ Candle fetch failed")
             time.sleep(10)
             continue
 
-        price = candles_1m[-1]["close"]
+        # -------- PRICE --------
+        live_price = get_live_price()
+        price = live_price if live_price else candles_1m[-1]["close"]
 
+        # -------- UPDATE CLOSES --------
         one_min_closes.clear()
         one_min_closes.extend([c["close"] for c in candles_1m])
 
         print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
 
-               # Step 1
+        # Step 1
         market_type, market_dir = identify_market_type()
 
         # Step 2
@@ -687,7 +758,7 @@ while True:
         # Step 3
         can_trade, _reason = passes_trade_filter(best, price)
 
-        # Smart update
+        # -------- SMART UPDATE --------
         now_minute = now.minute
         if now_minute % 5 == 0:
             current_key = f"{now.hour}:{now_minute}"
@@ -700,15 +771,14 @@ while True:
                 else:
                     send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
 
-      # Trade
+        # -------- TRADE --------
         if can_trade and best["score"] >= 65:
             send_msg(trade_signal_message(price, best, market_dir))
 
-        # LOOP CONTROL
+        # LOOP SPEED
         time.sleep(30)
 
     except Exception as e:
         print("ERROR:", e)
         traceback.print_exc()
         time.sleep(10)
-        continue
