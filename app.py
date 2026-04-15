@@ -158,22 +158,43 @@ def load_csv_data():
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-    def read_csv_file(filename):
-        data = []
-        path = os.path.join(BASE_DIR, filename)
+def read_csv_file(filename):
+    import csv
+    from datetime import datetime
+    import os
 
-        with open(path, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                data.append({
-                    "timestamp": datetime.fromisoformat(row["timestamp"]),
-                    "open": float(row["open"]),
-                    "high": float(row["high"]),
-                    "low": float(row["low"]),
-                    "close": float(row["close"]),
-                })
-        return data
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(BASE_DIR, filename)
 
+    data = []
+
+    with open(path, 'r') as f:
+        reader = csv.DictReader(f)
+
+        for row in reader:
+
+            # 🔥 handle ALL possible cases safely
+            ts = None
+
+            if "timestamp" in row:
+                ts = row["timestamp"]
+            elif "time" in row:
+                ts = row["time"]
+            elif "date" in row:
+                ts = row["date"]
+
+            if ts is None:
+                continue  # skip bad rows
+
+            data.append({
+                "timestamp": datetime.fromisoformat(ts),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+            })
+
+    return data
     df_1m = read_csv_file("btc_1m.csv")
     df_5m = read_csv_file("btc_5m.csv")
 
