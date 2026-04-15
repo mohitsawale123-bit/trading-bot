@@ -155,8 +155,8 @@ def load_csv_data():
 
     def read_csv_file(filename):
         import csv
-        from datetime import datetime
         import os
+        from datetime import datetime
 
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(BASE_DIR, filename)
@@ -167,42 +167,34 @@ def load_csv_data():
             reader = csv.DictReader(f)
 
             for row in reader:
-                ts = None
+                ts = row.get("timestamp") or row.get("time") or row.get("date")
 
-                if "timestamp" in row:
-                    ts = row["timestamp"]
-                elif "time" in row:
-                    ts = row["time"]
-                elif "date" in row:
-                    ts = row["date"]
+                if not ts:
+                    continue
 
-                from datetime import datetime
+                try:
+                    dt = datetime.fromisoformat(ts)
+                except:
+                    try:
+                        dt = datetime.strptime(ts, "%d-%m-%Y %H:%M:%S")
+                    except:
+                        try:
+                            dt = datetime.strptime(ts, "%Y/%m/%d %H:%M:%S")
+                        except:
+                            continue
 
-if not ts:
-    continue
+                data.append({
+                    "timestamp": dt,
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
+                    "close": float(row["close"]),
+                })
 
-try:
-    dt = datetime.fromisoformat(ts)
-except:
-    try:
-        dt = datetime.strptime(ts, "%d-%m-%Y %H:%M:%S")
-    except:
-        try:
-            dt = datetime.strptime(ts, "%Y/%m/%d %H:%M:%S")
-        except:
-            continue
-
-data.append({
-    "timestamp": dt,
-    "open": float(row["open"]),
-    "high": float(row["high"]),
-    "low": float(row["low"]),
-    "close": float(row["close"]),
-})
-return data   # ✅ ONLY THIS inside read_csv_file
+        return data   # ✅ END of inner function
 
 
-    # ✅ THIS MUST BE OUTSIDE read_csv_file
+    # ✅ THESE MUST BE SAME LEVEL AS read_csv_file (NOT inside it)
     df_1m = read_csv_file("btc_1m.csv")
     df_5m = read_csv_file("btc_5m.csv")
 
