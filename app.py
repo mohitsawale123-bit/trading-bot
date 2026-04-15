@@ -824,36 +824,37 @@ while True:
         candles_1m = get_klines("1m", 100)
         candles_5m = get_klines("5m", 100)
 
-        # ✅ MUST be inside try
-        if MODE == "DATA":
-            update_csv(candles_1m, "btc_1m.csv")
-            update_csv(candles_5m, "btc_5m.csv")
-
         if not candles_1m or not candles_5m:
-            print("⚠️ Candle fetch failed")
             time.sleep(10)
             continue
 
+        one_min_closes = [c["close"] for c in candles_1m]
         price = candles_1m[-1]["close"]
-
-        one_min_closes.clear()
-        one_min_closes.extend([c["close"] for c in candles_1m])
 
         print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
 
-               # Step 1
-        market_type, market_dir = identify_market_type()
-
-        # Step 2
+        # STEP 1 — Strategy
         best = strategy_engine()
 
-        # Step 3
-        can_trade, _reason = passes_trade_filter(best, price)
+        # STEP 2 — Filter
+        can_trade, _ = passes_trade_filter(best, price)
 
-        # Smart update
+        # STEP 3 — Signal print (HYBRID tracking)
+        if best["signal"] is not None:
+            risk = abs(price - best["sl"])
+            tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
+
+            print(f"📊 SIGNAL: {best['signal']} | SL: {best['sl']} | TP: {tp}")
+
+        # STEP 4 — LIVE TRADE EXECUTION (ONLY ONCE)
+        if MODE in ["LIVE", "HYBRID"] and can_trade and best["score"] >= 65:
+            send_msg(trade_signal_message(price, best, market_dir))
+
+        # STEP 5 — SMART UPDATE (every 5 min)
         now_minute = now.minute
         if now_minute % 5 == 0:
             current_key = f"{now.hour}:{now_minute}"
+
             if last_update_key != current_key:
                 last_update_key = current_key
                 last_candle = get_last_5m_candle()
@@ -862,10 +863,6 @@ while True:
                     send_msg(trade_signal_message(price, best, market_dir))
                 else:
                     send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
-
-      # Trade
-        if can_trade and best["score"] >= 65:
-            send_msg(trade_signal_message(price, best, market_dir))
 
         # LOOP CONTROL
         time.sleep(30)
