@@ -739,7 +739,7 @@ Action: {action}
 
 def run_backtest():
 
-    global candles_5m, one_min_closes   # ✅ MOVE HERE (TOP)
+    global candles_5m, one_min_closes
 
     df_1m, df_5m = load_csv_data()
 
@@ -751,7 +751,7 @@ def run_backtest():
         candles_1m = []
         candles_5m = []
 
-        # Build 1m candles
+        # Build candles
         for j in range(i - 100, i):
             row = df_1m[j]
             candles_1m.append({
@@ -762,7 +762,6 @@ def run_backtest():
                 "time": row["timestamp"]
             })
 
-        # Build 5m candles
         for j in range(i//5 - 100, i//5):
             row = df_5m[j]
             candles_5m.append({
@@ -774,47 +773,45 @@ def run_backtest():
             })
 
         one_min_closes = [c["close"] for c in candles_1m]
-
         price = candles_1m[-1]["close"]
 
         best = strategy_engine()
 
         if best["signal"] is None:
             continue
-            
-    risk = abs(price - best["sl"])
-    tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
 
-    result = None
+        risk = abs(price - best["sl"])
+        tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
 
-    # Historical future candles
-    future_candles = df_1m[i:i+5]
+        result = None
+        future_candles = df_1m[i:i+5]
 
-    for future in future_candles:
-        if best["signal"] == "BUY":
-            if future["low"] <= best["sl"]:
-                result = -1
-                break
-            if future["high"] >= tp:
-                result = 2
-                break
-        else:
-            if future["high"] >= best["sl"]:
-                result = -1
-                break
-            if future["low"] <= tp:
-                result = 2
-                break
+        for future in future_candles:
+            if best["signal"] == "BUY":
+                if future["low"] <= best["sl"]:
+                    result = -1
+                    break
+                if future["high"] >= tp:
+                    result = 2
+                    break
+            else:
+                if future["high"] >= best["sl"]:
+                    result = -1
+                    break
+                if future["low"] <= tp:
+                    result = 2
+                    break
 
-    if result:
-        pnl = balance * 0.01 * result
-        balance += pnl
-        trades.append(result)
+        if result:
+            pnl = balance * 0.01 * result
+            balance += pnl
+            trades.append(result)
 
-print("📊 BACKTEST RESULT")
-print("Final Balance:", balance)
-print("Total Trades:", len(trades))
-print("Win Rate:", trades.count(2)/len(trades)*100 if trades else 0)
+    # ✅ PRINT MUST BE HERE (inside function)
+    print("📊 BACKTEST RESULT")
+    print("Final Balance:", balance)
+    print("Total Trades:", len(trades))
+    print("Win Rate:", trades.count(2)/len(trades)*100 if trades else 0)
 
 # ---------------- MODE CONTROL ----------------
 
