@@ -128,7 +128,6 @@ def update_csv(candles, filename):
 
     file_exists = os.path.isfile(path)
 
-    # write data
     with open(path, "a", newline="") as f:
         writer = None
 
