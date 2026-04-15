@@ -777,7 +777,7 @@ def run_backtest():
         print("DEBUG:", best)
         can_trade, _ = passes_trade_filter(best, price)
 
-        if can_trade:
+        if best["signal"] is not None:
             risk = abs(price - best["sl"])
             tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
 
