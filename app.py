@@ -44,76 +44,64 @@ def now_ist() -> datetime:
     return datetime.now(timezone.utc) + IST_OFFSET
 
 
-# ---------------- PRICE FETCH (4 APIs + fallback) ----------------
-def get_price() -> float | None:
-    global last_price
+# ---------------- CHART FETCH (PRIMARY + BACKUP) ----------------
+def get_klines(interval="1m", limit=100):
 
-    for _ in range(2):
-        # Binance
-        try:
-            r = requests.get(
-                "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
-                timeout=5,
-            )
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, list) and data:
-                    last_price = float(data[-1][4])
-                    return last_price
-        except Exception:
-            pass
-
-        # Bybit
-        try:
-            r = requests.get(
-                "https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT",
-                timeout=5,
-            )
+    # 1️⃣ PRIMARY — BINANCE (BEST)
+    try:
+        r = requests.get(
+            f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval={interval}&limit={limit}",
+            timeout=5,
+        )
+        if r.status_code == 200:
             data = r.json()
-            if (
-                isinstance(data, dict)
-                and "result" in data
-                and data["result"].get("list")
-            ):
-                last_price = float(data["result"]["list"][0][4])
-                return last_price
-        except Exception:
-            pass
 
-        # Coinbase
-        try:
-            r = requests.get(
-                "https://api.exchange.coinbase.com/products/BTC-USD/ticker",
-                timeout=5,
-            )
+            candles = []
+            for d in data:
+                candles.append({
+                    "open": float(d[1]),
+                    "high": float(d[2]),
+                    "low": float(d[3]),
+                    "close": float(d[4]),
+                    "time": d[0]
+                })
+
+            if candles:
+                return candles
+
+    except Exception as e:
+        print("Binance Kline failed:", e)
+
+    # 2️⃣ BACKUP — BYBIT (VERY RELIABLE)
+    try:
+        interval_map = {"1m": "1", "5m": "5"}
+
+        r = requests.get(
+            f"https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval={interval_map.get(interval, '1')}&limit={limit}",
+            timeout=5,
+        )
+        if r.status_code == 200:
             data = r.json()
-            if isinstance(data, list) and data:
-                last_price = float(data[0][4])
-                return last_price
-        except Exception:
-            pass
 
-        # Kraken
-        try:
-            r = requests.get(
-                "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1",
-                timeout=5,
-            )
-            data = r.json()
-            if isinstance(data, dict) and "result" in data:
-                pair_keys = [k for k in data["result"].keys() if k != "last"]
-                if pair_keys:
-                    pair = pair_keys[0]
-                    row = data["result"][pair][-1]
-                    last_price = float(row[4])
-                    return last_price
-        except Exception:
-            pass
+            if data.get("result", {}).get("list"):
+                candles = []
 
-        time.sleep(1)
+                # Bybit returns reversed data → fix order
+                for d in reversed(data["result"]["list"]):
+                    candles.append({
+                        "open": float(d[1]),
+                        "high": float(d[2]),
+                        "low": float(d[3]),
+                        "close": float(d[4]),
+                        "time": int(d[0])
+                    })
 
-    return last_price
+                return candles
 
+    except Exception as e:
+        print("Bybit Kline failed:", e)
+
+    return []
 
 # ---------------- HELPERS ----------------
 def mean_safe(arr):
@@ -657,39 +645,24 @@ send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
 # ---------------- LOOP ----------------
 while True:
     try:
-
         now = now_ist()
-        price = get_price()
-        print(f"✅ Loop running | Time: {now.strftime('%H:%M:%S')} | Price: {price}")
 
-        if price is None:
+        candles_1m = get_klines("1m", 100)
+        candles_5m = get_klines("5m", 100)
+
+        if not candles_1m or not candles_5m:
+            print("⚠️ Candle fetch failed")
             time.sleep(10)
             continue
 
-        # store 1m price
-        one_min_closes.append(price)
-        if len(one_min_closes) > 500:
-            one_min_closes = one_min_closes[-500:]
+        price = candles_1m[-1]["close"]
 
-        # build 5m candle manually
-        candle_buffer.append(price)
-        if len(candle_buffer) >= 5:
-            o = candle_buffer[0]
-            h = max(candle_buffer)
-            l = min(candle_buffer)
-            c = candle_buffer[-1]
-            candles_5m.append({
-                "open": o,
-                "high": h,
-                "low": l,
-                "close": c,
-                "time": now.strftime("%H:%M"),
-            })
-            candle_buffer = []
-            if len(candles_5m) > 300:
-                candles_5m = candles_5m[-300:]
+        one_min_closes.clear()
+        one_min_closes.extend([c["close"] for c in candles_1m])
 
-        # Step 1
+        print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
+
+               # Step 1
         market_type, market_dir = identify_market_type()
 
         # Step 2
@@ -711,12 +684,12 @@ while True:
                 else:
                     send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
 
-        # Trade
-        if can_trade and best["score"] >= 50:
-            send_msg(trade_signal_message(price, best, market_dir))
-            time.sleep(60)
+       # Trade
+if can_trade and best["score"] >= 50:
+    send_msg(trade_signal_message(price, best, market_dir))
 
-        time.sleep(60)
+# Loop delay
+time.sleep(30)
 
     except Exception as e:   # ✅ NOW CORRECT
         print("ERROR:", e)
