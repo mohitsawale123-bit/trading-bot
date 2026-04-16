@@ -866,16 +866,26 @@ while True:
             send_msg(trade_signal_message(price, best, market_dir))
 
         # STEP 5 — Smart update
-        global last_update_key   # ✅ IMPORTANT
-        now_minute = now.minute
-        if now_minute % 5 == 0:
-            current_key = f"{now.hour}:{now_minute}"
+global last_update_key
 
-            if last_update_key != current_key:
-                last_update_key = current_key
-                last_candle = get_last_5m_candle()
+now_minute = now.minute
 
-                    send_msg(smart_update_message(price, last_candle, market_type, market_dir, best))
+if now_minute % 5 == 0:
+    current_key = f"{now.hour}:{now_minute}"
+
+    if last_update_key != current_key:
+        last_update_key = current_key
+        last_candle = get_last_5m_candle()
+
+        send_msg(
+            smart_update_message(
+                price,
+                last_candle,
+                market_type,
+                market_dir,
+                best
+            )
+        )
 
         time.sleep(30)
 
