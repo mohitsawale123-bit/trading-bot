@@ -828,9 +828,10 @@ if MODE == "BACKTEST":
 send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
 
 # ---------------- LOOP ----------------
-
 while True:
     try:
+        global last_update_key   # ✅ MUST BE FIRST INSIDE TRY
+
         now = now_ist()
 
         candles_1m = get_klines("1m", 100)
@@ -846,8 +847,8 @@ while True:
         print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
 
         # STEP 0 — Market Type
-        market_type, market_dir = identify_market_type()    
-        
+        market_type, market_dir = identify_market_type()
+
         # STEP 1 — Strategy
         best = strategy_engine()
 
@@ -865,28 +866,27 @@ while True:
         if MODE in ["LIVE", "HYBRID"] and can_trade and best["score"] >= 65:
             send_msg(trade_signal_message(price, best, market_dir))
 
-        # STEP 5 — Smart update
-global last_update_key
+        # STEP 5 — Smart update (✅ INSIDE TRY)
+        now_minute = now.minute
 
-now_minute = now.minute
+        if now_minute % 5 == 0:
+            current_key = f"{now.hour}:{now_minute}"
 
-if now_minute % 5 == 0:
-    current_key = f"{now.hour}:{now_minute}"
+            if last_update_key != current_key:
+                last_update_key = current_key
+                last_candle = get_last_5m_candle()
 
-    if last_update_key != current_key:
-        last_update_key = current_key
-        last_candle = get_last_5m_candle()
+                send_msg(
+                    smart_update_message(
+                        price,
+                        last_candle,
+                        market_type,
+                        market_dir,
+                        best
+                    )
+                )
 
-        send_msg(
-            smart_update_message(
-                price,
-                last_candle,
-                market_type,
-                market_dir,
-                best
-            )
-        )
-
+        # LOOP CONTROL
         time.sleep(30)
 
     except Exception as e:
@@ -894,3 +894,4 @@ if now_minute % 5 == 0:
         import traceback
         traceback.print_exc()
         time.sleep(10)
+        continue
