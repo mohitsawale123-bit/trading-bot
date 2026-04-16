@@ -30,14 +30,18 @@ candle_buffer = []   # ✅ ADD THIS LINE
 # ---------------- TELEGRAM ----------------
 def send_msg(msg: str) -> None:
     try:
-        requests.post(
+        print("📤 Sending:", msg)
+
+        response = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             data={"chat_id": CHAT_ID, "text": msg},
             timeout=10,
         )
-    except Exception:
-        pass
 
+        print("📩 Telegram response:", response.text)
+
+    except Exception as e:
+        print("❌ Telegram Error:", e)
 
 # ---------------- TIME ----------------
 def now_ist() -> datetime:
