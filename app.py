@@ -828,10 +828,10 @@ if MODE == "BACKTEST":
 send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
 
 # ---------------- LOOP ----------------
+last_update_key = None   # ✅ define once at top
+
 while True:
     try:
-        global last_update_key   # ✅ MUST BE FIRST INSIDE TRY
-
         now = now_ist()
 
         candles_1m = get_klines("1m", 100)
@@ -866,7 +866,7 @@ while True:
         if MODE in ["LIVE", "HYBRID"] and can_trade and best["score"] >= 65:
             send_msg(trade_signal_message(price, best, market_dir))
 
-        # STEP 5 — Smart update (✅ INSIDE TRY)
+        # STEP 5 — Smart update
         now_minute = now.minute
 
         if now_minute % 5 == 0:
@@ -886,7 +886,6 @@ while True:
                     )
                 )
 
-        # LOOP CONTROL
         time.sleep(30)
 
     except Exception as e:
