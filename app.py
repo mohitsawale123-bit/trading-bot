@@ -841,6 +841,9 @@ while True:
 
         print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
 
+        # STEP 0 — Market Type
+        market_type, market_dir = identify_market_type()    
+        
         # STEP 1 — Strategy
         best = strategy_engine()
 
