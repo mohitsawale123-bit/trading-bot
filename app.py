@@ -44,30 +44,43 @@ def get_klines():
     import requests
 
     url = "https://api.exchange.coinbase.com/products/BTC-USD/candles"
-    params = {
-        "granularity": 300  # 5 min
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
     }
 
-    res = requests.get(url, params=params, timeout=10)
+    params = {
+        "granularity": 300
+    }
 
-    if res.status_code != 200:
-        print("API ERROR:", res.text)
+    try:
+        res = requests.get(url, params=params, headers=headers, timeout=10)
+
+        if res.status_code != 200:
+            print("API ERROR:", res.text)
+            return []
+
+        data = res.json()
+
+    except Exception as e:
+        print("Request Failed:", e)
         return []
 
-    data = res.json()
-
     candles = []
+
     for d in data:
-        candles.append({
-            "time": d[0],
-            "low": float(d[1]),
-            "high": float(d[2]),
-            "open": float(d[3]),
-            "close": float(d[4]),
-        })
+        try:
+            candles.append({
+                "time": d[0],
+                "low": float(d[1]),
+                "high": float(d[2]),
+                "open": float(d[3]),
+                "close": float(d[4]),
+            })
+        except:
+            continue
 
-    candles.reverse()  # important
-
+    candles.reverse()
     return candles
     
     except Exception as e:
