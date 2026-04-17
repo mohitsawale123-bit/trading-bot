@@ -41,19 +41,41 @@ def now_ist():
 
 # ---------------- BINANCE DATA ----------------
 def get_klines(limit=120):
-    url = f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit={limit}"
-    data = requests.get(url, timeout=10).json()
+    url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=" + str(limit)
 
-    candles = []
-    for d in data:
-        candles.append({
-            "open": float(d[1]),
-            "high": float(d[2]),
-            "low": float(d[3]),
-            "close": float(d[4]),
-            "time": int(d[0])
-        })
-    return candles
+    try:
+        res = requests.get(url, timeout=10)
+
+        if res.status_code != 200:
+            print("❌ API Error:", res.text)
+            return []
+
+        data = res.json()
+
+        # ❌ If API returns error dict
+        if isinstance(data, dict):
+            print("❌ Binance Error:", data)
+            return []
+
+        candles = []
+        for d in data:
+            try:
+                candles.append({
+                    "open": float(d[1]),
+                    "high": float(d[2]),
+                    "low": float(d[3]),
+                    "close": float(d[4]),
+                    "time": int(d[0])
+                })
+            except Exception as e:
+                print("⚠️ Bad candle skipped:", d)
+                continue
+
+        return candles
+
+    except Exception as e:
+        print("❌ Request Failed:", e)
+        return []
 
 
 # ---------------- CSV (90 DAYS ROLLING) ----------------
@@ -293,7 +315,7 @@ while True:
                     )
                 )
 
-        time.sleep(30)
+        time.sleep(60)
 
     except Exception as e:
         print("ERROR:", e)
