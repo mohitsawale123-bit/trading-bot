@@ -62,27 +62,23 @@ def get_klines():
 
         data = res.json()
 
-    except Exception as e:
-        print("Request Failed:", e)
-        return []
+        candles = []
 
-    candles = []
+        for d in data:
+            try:
+                candles.append({
+                    "time": d[0],
+                    "low": float(d[1]),
+                    "high": float(d[2]),
+                    "open": float(d[3]),
+                    "close": float(d[4]),
+                })
+            except:
+                continue
 
-    for d in data:
-        try:
-            candles.append({
-                "time": d[0],
-                "low": float(d[1]),
-                "high": float(d[2]),
-                "open": float(d[3]),
-                "close": float(d[4]),
-            })
-        except:
-            continue
+        candles.reverse()
+        return candles
 
-    candles.reverse()
-    return candles
-    
     except Exception as e:
         print("❌ Request Failed:", e)
         return []
