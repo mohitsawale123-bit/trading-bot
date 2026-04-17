@@ -1,213 +1,80 @@
+# ================= PURE 5M BTC BOT (FINAL) =================
+
 import os
 import time
-import math
 import traceback
 from datetime import datetime, timezone, timedelta
 
 import numpy as np
 import requests
+import pandas as pd
 
-print("🔥 BTCUSD FINAL BOT (STEP FLOW + 5 STRATEGIES)")
-MODE = "LIVE"        # LIVE / BACKTEST / HYBRID
+print("🔥 BTC BOT (PURE 5M FINAL)")
+
+MODE = "LIVE"
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 IST_OFFSET = timedelta(hours=5, minutes=30)
 
+candles_5m = []
 last_update_key = None
-last_price = None
 
-prices = []
-
-# 1-minute closes from APIs
-one_min_closes = []
-
-# built 5-minute candles
-candles_5m = []  # each item: {"open","high","low","close","time"}
-
-candle_buffer = []   # ✅ ADD THIS LINE
 
 # ---------------- TELEGRAM ----------------
-def send_msg(msg: str) -> None:
+def send_msg(msg):
     try:
-        print("📤 Sending:", msg)
-
-        response = requests.post(
+        print("📤", msg)
+        requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             data={"chat_id": CHAT_ID, "text": msg},
             timeout=10,
         )
-
-        print("📩 Telegram response:", response.text)
-
     except Exception as e:
         print("❌ Telegram Error:", e)
 
+
 # ---------------- TIME ----------------
-def now_ist() -> datetime:
+def now_ist():
     return datetime.now(timezone.utc) + IST_OFFSET
 
 
-# ---------------- CHART FETCH (PRIMARY + BACKUP) ----------------
-def get_klines(interval="1m", limit=100):
+# ---------------- BINANCE DATA ----------------
+def get_klines(limit=120):
+    url = f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit={limit}"
+    data = requests.get(url, timeout=10).json()
 
-    # ---------------- COINBASE ----------------
-    try:
-        granularity_map = {
-            "1m": 60,
-            "5m": 300
-        }
+    candles = []
+    for d in data:
+        candles.append({
+            "open": float(d[1]),
+            "high": float(d[2]),
+            "low": float(d[3]),
+            "close": float(d[4]),
+            "time": int(d[0])
+        })
+    return candles
 
-        r = requests.get(
-            f"https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity={granularity_map.get(interval, 60)}",
-            timeout=10,
-        )
 
-        data = r.json()
+# ---------------- CSV (90 DAYS ROLLING) ----------------
+def update_csv(candles):
+    path = "btc_5m.csv"
 
-        if isinstance(data, list) and len(data) > 0:
-            candles = []
+    df_new = pd.DataFrame(candles)
 
-            for d in reversed(data[-limit:]):
-                candles.append({
-                    "open": float(d[3]),
-                    "high": float(d[2]),
-                    "low": float(d[1]),
-                    "close": float(d[4]),
-                    "time": d[0]
-                })
+    if os.path.exists(path):
+        df_old = pd.read_csv(path)
+        df = pd.concat([df_old, df_new])
+    else:
+        df = df_new
 
-            return candles
-
-        else:
-            print("⚠️ Coinbase bad response:", data)
-
-    except Exception as e:
-        print("❌ Coinbase error:", e)
-
-    # ---------------- KRAKEN ----------------
-    try:
-        interval_map = {
-            "1m": 1,
-            "5m": 5
-        }
-
-        r = requests.get(
-            f"https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval={interval_map.get(interval,1)}",
-            timeout=10,
-        )
-
-        data = r.json()
-
-        if isinstance(data, dict) and "result" in data:
-            pair = [k for k in data["result"].keys() if k != "last"][0]
-            rows = data["result"][pair]
-
-            candles = []
-
-            for d in rows[-limit:]:
-                candles.append({
-                    "open": float(d[1]),
-                    "high": float(d[2]),
-                    "low": float(d[3]),
-                    "close": float(d[4]),
-                    "time": int(d[0])
-                })
-
-            return candles
-
-        else:
-            print("⚠️ Kraken bad response:", data)
-
-    except Exception as e:
-        print("❌ Kraken error:", e)
-
-    return []
-def update_csv(candles, filename):
-    import csv
-    import os
-
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(BASE_DIR, filename)
-
-    file_exists = os.path.isfile(path)
-
-    with open(path, "a", newline="") as f:
-        writer = None
-
-        for c in candles:
-            # rename time → timestamp
-            if "time" in c:
-                c["timestamp"] = c.pop("time")
-
-            if writer is None:
-                writer = csv.DictWriter(f, fieldnames=c.keys())
-
-                if not file_exists:
-                    writer.writeheader()
-
-            writer.writerow(c)
-    # Remove duplicates
-    df = df.drop_duplicates(subset=["timestamp"])
-
-    # Keep only last ~90 days
-    df = df.sort_values("timestamp").tail(130000)
+    df = df.drop_duplicates(subset=["time"])
+    df = df.sort_values("time").tail(26000)
 
     df.to_csv(path, index=False)
 
-def load_csv_data():
 
-    def read_csv_file(filename):
-        import csv
-        import os
-        from datetime import datetime
-
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(BASE_DIR, filename)
-
-        data = []
-
-        with open(path, 'r') as f:
-            reader = csv.DictReader(f)
-
-            for row in reader:
-                ts = row.get("timestamp") or row.get("time") or row.get("date")
-
-                if not ts:
-                    continue
-
-                try:
-                    dt = datetime.fromisoformat(ts)
-                except:
-                    try:
-                        dt = datetime.strptime(ts, "%d-%m-%Y %H:%M:%S")
-                    except:
-                        try:
-                            dt = datetime.strptime(ts, "%Y/%m/%d %H:%M:%S")
-                        except:
-                            continue
-
-                data.append({
-                    "timestamp": dt,
-                    "open": float(row["open"]),
-                    "high": float(row["high"]),
-                    "low": float(row["low"]),
-                    "close": float(row["close"]),
-                })
-
-        return data   # ✅ END of inner function
-
-
-    # ✅ THESE MUST BE SAME LEVEL AS read_csv_file (NOT inside it)
-    df_1m = read_csv_file("btc_1m.csv")
-    df_5m = read_csv_file("btc_5m.csv")
-
-    return df_1m, df_5m
 # ---------------- HELPERS ----------------
-def mean_safe(arr):
-    return float(np.mean(arr)) if len(arr) > 0 else 0.0
-
-
 def ema(values, period):
     if len(values) < period:
         return None
@@ -218,385 +85,117 @@ def ema(values, period):
     return ema_val
 
 
-def get_last_5m_candle():
-    return candles_5m[-1] if candles_5m else None
+def bullish(c): return c["close"] > c["open"]
+def bearish(c): return c["close"] < c["open"]
 
 
-def get_recent_high_low(n=12):
-    if len(candles_5m) < n:
-        return None, None
+def get_recent_high_low(n=10):
     highs = [c["high"] for c in candles_5m[-n:]]
     lows = [c["low"] for c in candles_5m[-n:]]
     return max(highs), min(lows)
 
 
-def candle_body(c):
-    return abs(c["close"] - c["open"])
-
-
-def candle_range(c):
-    return c["high"] - c["low"]
-
-
-def upper_wick(c):
-    return c["high"] - max(c["open"], c["close"])
-
-
-def lower_wick(c):
-    return min(c["open"], c["close"]) - c["low"]
-
-
-def bullish_candle(c):
-    return c["close"] > c["open"]
-
-
-def bearish_candle(c):
-    return c["close"] < c["open"]
-
-
-def strong_bullish(c):
-    return bullish_candle(c) and candle_body(c) >= max(20, candle_range(c) * 0.45)
-
-
-def strong_bearish(c):
-    return bearish_candle(c) and candle_body(c) >= max(20, candle_range(c) * 0.45)
-
-
-# ---------------- STEP 1: LIVE MARKET TYPE ----------------
+# ---------------- MARKET TYPE ----------------
 def identify_market_type():
-    if len(one_min_closes) < 30 or len(candles_5m) < 5:
-        return "UNKNOWN", "WEAK"
+    closes = [c["close"] for c in candles_5m]
 
-    ema9_1m = ema(one_min_closes[-30:], 9)
-    ema21_1m = ema(one_min_closes[-30:], 21)
-    vwap_proxy = mean_safe(one_min_closes[-20:])
-    recent_move = abs(one_min_closes[-1] - one_min_closes[-10])
+    ema9 = ema(closes[-20:], 9)
+    ema21 = ema(closes[-20:], 21)
 
-    hi, lo = get_recent_high_low(8)
-    last = one_min_closes[-1]
+    hi, lo = get_recent_high_low()
+    last = closes[-1]
 
-    if hi is None or lo is None or ema9_1m is None or ema21_1m is None:
-        return "UNKNOWN", "WEAK"
+    if ema9 and ema21 and abs(ema9 - ema21) > 50:
+        return "TRENDING", "UP" if ema9 > ema21 else "DOWN"
 
-    range_width = hi - lo
-
-    # Trending → EMA / VWAP
-    if abs(ema9_1m - ema21_1m) > 25 and abs(last - vwap_proxy) > 20 and recent_move > 60:
-        direction = "UP" if ema9_1m > ema21_1m else "DOWN"
-        return "TRENDING", direction
-
-    # Sudden spike → Liquidity Grab
-    if recent_move > 120:
-        direction = "UP" if one_min_closes[-1] > one_min_closes[-5] else "DOWN"
-        return "SUDDEN_SPIKE", direction
-
-    # Sideways → Range Trap
-    if range_width < 180 and recent_move < 45:
-        return "SIDEWAYS", "WEAK"
-
-    # Level break → Breakout
-    if last > hi or last < lo:
-        direction = "UP" if last > hi else "DOWN"
-        return "LEVEL_BREAK", direction
+    if last > hi:
+        return "BREAKOUT", "UP"
+    if last < lo:
+        return "BREAKOUT", "DOWN"
 
     return "MIXED", "WEAK"
 
 
-# ---------------- STEP 3 FILTERS ----------------
-def session_active(now):
-    # London + US focus in IST
-    # London roughly 12:30–18:30 IST, US roughly 18:30–01:30 IST
-    hour = now.hour
-    minute = now.minute
-    total = hour * 60 + minute
+# ================= 5 STRATEGIES =================
 
-    london_start = 12 * 60 + 30
-    london_end = 18 * 60 + 30
-    us_start = 18 * 60 + 30
-    us_end = 23 * 60 + 59
-
-    return (london_start <= total <= london_end) or (us_start <= total <= us_end) or (0 <= total <= 90)
-
-
-def avoid_event_trading(now):
-    # Honest approximation only; not live economic calendar.
-    # Blocks a few common high-risk windows around US data / roll times.
-    total = now.hour * 60 + now.minute
-    blocked = [
-        (18 * 60 + 20, 18 * 60 + 50),
-        (20 * 60 + 20, 20 * 60 + 50),
-        (22 * 60 + 20, 22 * 60 + 50),
-    ]
-    return any(start <= total <= end for start, end in blocked)
-
-
-def trade_action(score):
-    if score >= 80:
-        return "🔥 STRONG TRADE"
-    if score >= 65:
-        return "✅ GOOD"
-    if score >= 50:
-        return "⚠️ SKIP"
-    return "❌ NO TRADE"
-
-
-# ---------------- STRATEGY 1: LIQUIDITY GRAB ----------------
 def liquidity_grab():
-    name = "Liquidity Grab"
-    if len(candles_5m) < 12:
-        return None, 0, name, "No setup", None
-
     c = candles_5m[-1]
-    prevs = candles_5m[-6:-1]
-    prev_high = max(x["high"] for x in prevs)
-    prev_low = min(x["low"] for x in prevs)
+    prev = candles_5m[-6:-1]
 
-    score = 0
-    signal = None
-    setup = "Liquidity Sweep + Rejection"
+    hi = max(x["high"] for x in prev)
+    lo = min(x["low"] for x in prev)
 
-    # 1) Sweep quality
-    sweep_up = c["high"] > prev_high and c["close"] < prev_high
-    sweep_down = c["low"] < prev_low and c["close"] > prev_low
+    if c["high"] > hi and c["close"] < hi:
+        return "SELL", 70, "Liquidity Grab", c["high"] + 30
 
-    if sweep_up:
-        signal = "SELL"
-        wick = upper_wick(c)
-        score += 20 if wick > 40 else 15 if wick > 25 else 10
-    elif sweep_down:
-        signal = "BUY"
-        wick = lower_wick(c)
-        score += 20 if wick > 40 else 15 if wick > 25 else 10
-    else:
-        return None, 0, name, "No sweep", None
+    if c["low"] < lo and c["close"] > lo:
+        return "BUY", 70, "Liquidity Grab", c["low"] - 30
 
-    # 2) Rejection
-    if signal == "BUY":
-        score += 20 if strong_bullish(c) else 10 if bullish_candle(c) else 5
-    else:
-        score += 20 if strong_bearish(c) else 10 if bearish_candle(c) else 5
-
-    # 3) BOS strength
-    closes = [x["close"] for x in candles_5m[-6:]]
-    if signal == "BUY":
-        score += 20 if closes[-1] > max(closes[:-1]) else 10
-    else:
-        score += 20 if closes[-1] < min(closes[:-1]) else 10
-
-    # 4) Pullback quality (approx using close near midpoint after sweep)
-    midpoint = (c["high"] + c["low"]) / 2
-    score += 20 if abs(c["close"] - midpoint) < 20 else 10
-
-    # 5) Context
-    mtype, mdir = identify_market_type()
-    if mtype in ["SUDDEN_SPIKE", "TRENDING"]:
-        score += 20
-    elif mtype == "MIXED":
-        score += 10
-    else:
-        score += 5
-
-    sl = c["low"] - 30 if signal == "BUY" else c["high"] + 30
-    return signal, min(score, 100), name, setup, sl
+    return None, 0, "", None
 
 
-# ---------------- STRATEGY 2: BREAKOUT + RETEST ----------------
 def breakout_retest():
-    name = "Breakout + Retest"
-    if len(candles_5m) < 15:
-        return None, 0, name, "No setup", None
+    hi, lo = get_recent_high_low()
 
-    level_high, level_low = get_recent_high_low(10)
     c = candles_5m[-1]
     p = candles_5m[-2]
 
-    score = 0
-    signal = None
-    setup = "Breakout + Retest + Confirmation"
+    if p["close"] > hi and c["low"] <= hi and bullish(c):
+        return "BUY", 75, "Breakout Retest", hi - 40
 
-    if level_high is None or level_low is None:
-        return None, 0, name, "No level", None
+    if p["close"] < lo and c["high"] >= lo and bearish(c):
+        return "SELL", 75, "Breakout Retest", lo + 40
 
-    # breakout candle previous, retest current
-    broke_up = p["close"] > level_high
-    broke_down = p["close"] < level_low
-
-    if broke_up and c["low"] <= level_high and bullish_candle(c):
-        signal = "BUY"
-    elif broke_down and c["high"] >= level_low and bearish_candle(c):
-        signal = "SELL"
-    else:
-        return None, 0, name, "Missing retest", None
-
-    # level strength
-    score += 20
-
-    # breakout strength
-    score += 20 if candle_body(p) > 35 else 10
-
-    # retest quality
-    score += 20 if abs(c["close"] - (level_high if signal == "BUY" else level_low)) < 40 else 10
-
-    # rejection strength
-    if signal == "BUY":
-        score += 20 if strong_bullish(c) else 10
-    else:
-        score += 20 if strong_bearish(c) else 10
-
-    # context
-    mtype, _ = identify_market_type()
-    score += 20 if mtype in ["TRENDING", "LEVEL_BREAK"] else 10 if mtype == "MIXED" else 5
-
-    sl = (level_high - 40) if signal == "BUY" else (level_low + 40)
-    return signal, min(score, 100), name, setup, sl
+    return None, 0, "", None
 
 
-# ---------------- STRATEGY 3: VWAP BOUNCE ----------------
 def vwap_bounce():
-    name = "VWAP Bounce"
-    if len(one_min_closes) < 25 or len(candles_5m) < 2:
-        return None, 0, name, "No setup", None
+    closes = [c["close"] for c in candles_5m]
+    vwap = np.mean(closes[-20:])
 
-    vwap = mean_safe(one_min_closes[-20:])
     c = candles_5m[-1]
-    score = 0
-    signal = None
-    setup = "VWAP Bounce + Confirmation"
 
-    if abs(c["close"] - vwap) > 120:
-        return None, 0, name, "Too far from VWAP", None
+    if abs(c["close"] - vwap) < 100:
+        if bullish(c):
+            return "BUY", 65, "VWAP Bounce", vwap - 50
+        if bearish(c):
+            return "SELL", 65, "VWAP Bounce", vwap + 50
 
-    if c["close"] > vwap and c["low"] <= vwap and bullish_candle(c):
-        signal = "BUY"
-    elif c["close"] < vwap and c["high"] >= vwap and bearish_candle(c):
-        signal = "SELL"
-    else:
-        return None, 0, name, "No clean bounce", None
-
-    # vwap trend
-    score += 20 if abs(one_min_closes[-1] - vwap) > 15 else 10
-
-    # pullback distance
-    score += 20 if abs(c["close"] - vwap) < 40 else 10
-
-    # rejection
-    if signal == "BUY":
-        score += 20 if strong_bullish(c) else 10
-    else:
-        score += 20 if strong_bearish(c) else 10
-
-    # momentum
-    score += 20 if abs(one_min_closes[-1] - one_min_closes[-5]) > 60 else 10
-
-    # session context
-    score += 20 if session_active(now_ist()) else 5
-
-    sl = vwap - 50 if signal == "BUY" else vwap + 50
-    return signal, min(score, 100), name, setup, sl
+    return None, 0, "", None
 
 
-# ---------------- STRATEGY 4: EMA TREND PULLBACK ----------------
 def ema_pullback():
-    name = "EMA Pullback"
-    if len(one_min_closes) < 30 or len(candles_5m) < 2:
-        return None, 0, name, "No setup", None
+    closes = [c["close"] for c in candles_5m]
 
-    ema9 = ema(one_min_closes[-20:], 9)
-    ema21 = ema(one_min_closes[-30:], 21)
+    ema9 = ema(closes[-20:], 9)
+    ema21 = ema(closes[-30:], 21)
+
     c = candles_5m[-1]
-    score = 0
-    signal = None
-    setup = "EMA Pullback + Rejection"
 
-    if ema9 is None or ema21 is None:
-        return None, 0, name, "EMA unavailable", None
+    if ema9 and ema21:
+        if ema9 > ema21 and abs(c["low"] - ema9) < 80:
+            return "BUY", 70, "EMA Pullback", ema21 - 50
+        if ema9 < ema21 and abs(c["high"] - ema9) < 80:
+            return "SELL", 70, "EMA Pullback", ema21 + 50
 
-    if ema9 > ema21 and abs(c["low"] - ema9) < 80 and bullish_candle(c):
-        signal = "BUY"
-    elif ema9 < ema21 and abs(c["high"] - ema9) < 80 and bearish_candle(c):
-        signal = "SELL"
-    else:
-        return None, 0, name, "No EMA pullback", None
-
-    # trend strength
-    score += 20 if abs(ema9 - ema21) > 40 else 10
-
-    # alignment
-    score += 20
-
-    # pullback clarity
-    score += 20 if abs(c["close"] - ema9) < 40 else 10
-
-    # rejection
-    if signal == "BUY":
-        score += 20 if strong_bullish(c) else 10
-    else:
-        score += 20 if strong_bearish(c) else 10
-
-    # momentum
-    score += 20 if abs(one_min_closes[-1] - one_min_closes[-5]) > 50 else 10
-
-    sl = ema21 - 60 if signal == "BUY" else ema21 + 60
-    return signal, min(score, 100), name, setup, sl
+    return None, 0, "", None
 
 
-# ---------------- STRATEGY 5: RANGE LIQUIDITY TRAP ----------------
 def range_trap():
-    name = "Range Trap"
-    if len(candles_5m) < 12:
-        return None, 0, name, "No setup", None
-
-    recent = candles_5m[-10:]
-    high = max(c["high"] for c in recent)
-    low = min(c["low"] for c in recent)
-    width = high - low
+    hi, lo = get_recent_high_low()
 
     c = candles_5m[-1]
-    score = 0
-    signal = None
-    setup = "Range Trap + Reversal"
 
-    # strong trend skip
-    mtype, _ = identify_market_type()
-    if mtype == "TRENDING":
-        return None, 0, name, "Strong trend skip", None
+    if c["high"] > hi and bearish(c):
+        return "SELL", 70, "Range Trap", c["high"] + 30
 
-    if width > 250:
-        return None, 0, name, "Range not clean", None
+    if c["low"] < lo and bullish(c):
+        return "BUY", 70, "Range Trap", c["low"] - 30
 
-    fake_break_high = c["high"] > high and c["close"] < high
-    fake_break_low = c["low"] < low and c["close"] > low
-
-    if fake_break_low and bullish_candle(c):
-        signal = "BUY"
-    elif fake_break_high and bearish_candle(c):
-        signal = "SELL"
-    else:
-        return None, 0, name, "No fake breakout", None
-
-    # range clarity
-    score += 20
-
-    # fake breakout strength
-    score += 20 if candle_range(c) > 80 else 10
-
-    # rejection
-    if signal == "BUY":
-        score += 20 if lower_wick(c) > candle_body(c) else 10
-    else:
-        score += 20 if upper_wick(c) > candle_body(c) else 10
-
-    # return inside range
-    score += 20
-
-    # context
-    score += 20 if mtype == "SIDEWAYS" else 10
-
-    sl = c["low"] - 30 if signal == "BUY" else c["high"] + 30
-    return signal, min(score, 100), name, setup, sl
+    return None, 0, "", None
 
 
-# ---------------- STEP 2: SCAN STRATEGIES IN PRIORITY ORDER ----------------
+# ---------------- STRATEGY ENGINE ----------------
 def strategy_engine():
     strategies = [
         liquidity_grab,
@@ -606,280 +205,88 @@ def strategy_engine():
         range_trap,
     ]
 
-    best = {
-        "signal": None,
-        "score": 0,
-        "strategy": "No strategy building",
-        "setup": "No strategy building",
-        "sl": None,
-    }
+    best = {"signal": None, "score": 0, "sl": None, "name": ""}
 
-    for strat in strategies:
-        signal, score, name, setup, sl = strat()
+    for s in strategies:
+        sig, score, name, sl = s()
         if score > best["score"]:
-            best = {
-                "signal": signal,
-                "score": score,
-                "strategy": name,
-                "setup": setup,
-                "sl": sl,
-            }
+            best = {"signal": sig, "score": score, "sl": sl, "name": name}
 
     return best
 
 
-# ---------------- STEP 3: APPLY FILTERS ----------------
-def passes_trade_filter(best, price):
-    now = now_ist()
-
-    if best["signal"] is None:
-        return False, "No signal"
-
-    if best["score"] < 65:
-        return False, "Score too low"
-
-    if not session_active(now):
-        return False, "Session inactive"
-
-    if avoid_event_trading(now):
-        return False, "Avoid event window"
-
-    if best["sl"] is None:
-        return False, "No clear SL"
-
-    risk = abs(price - best["sl"])
-    if risk <= 0:
-        return False, "Invalid risk"
-
-    tp1 = price + risk * 3 if best["signal"] == "BUY" else price - risk * 3
-    rr = abs(tp1 - price) / risk
-    if rr < 3:
-        return False, "RR below 1:3"
-
-    # confirmation candle
-    c = get_last_5m_candle()
-    if c is None:
-        return False, "No confirmation candle"
-
-    if best["signal"] == "BUY" and not bullish_candle(c):
-        return False, "No bullish confirmation"
-    if best["signal"] == "SELL" and not bearish_candle(c):
-        return False, "No bearish confirmation"
-
-    return True, "PASS"
-
-
-# ---------------- SMART UPDATE FORMAT ----------------
-def smart_update_message(price, last_candle, market_type, market_dir, best):
-    high = last_candle["high"] if last_candle else price
-    low = last_candle["low"] if last_candle else price
-    score = best["score"]
-    strategy = best["strategy"]
-
-    if score >= 40:
-        trend_text = f"{market_dir} (Strong)" if market_dir in ["UP", "DOWN"] else "UP / Down (Strong)"
-        bias = "BUY ZONE" if market_dir == "UP" else "SELL ZONE" if market_dir == "DOWN" else "BUY ZONE"
-        win = "Approx - 40-50% 🔥"
-        market_name = "Strong market"
-    else:
-        trend_text = "Weak"
-        bias = "weak zone"
-        win = "Approx - 0-40% 🔥"
-        market_name = "Weak / Avoid Market"
-
-    return f"""📊 BTC SMART UPDATE
-
-Market: {market_name}
-Trend: {trend_text}
-
-Current Price: {price}
-
-Last 5 min candle - High price: {high}
-Last 5 min candle - Low price: {low}
-
-Bias: {bias}
-Strategy setup: {strategy}
-Win Rate: {win}
-
-⏳ Waiting for trade signal setup"""
-
-
-# ---------------- TRADE SIGNAL FORMAT ----------------
+# ---------------- TRADE MESSAGE ----------------
 def trade_signal_message(price, best, market_dir):
-    score = best["score"]
-    signal = best["signal"]
-    setup = best["setup"]
-    sl = best["sl"]
+    risk = abs(price - best["sl"])
+    tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
 
-    action = trade_action(score)
-    risk = abs(price - sl)
-    tp1 = price + risk * 3 if signal == "BUY" else price - risk * 3
-    tp2 = price + risk * 4 if signal == "BUY" else price - risk * 4
+    return f"""🚨 BTC SIGNAL
 
-    trend_text = "STRONG" if market_dir in ["UP", "DOWN"] else "STRONG"
-
-    return f"""🚨 BTC TRADE SIGNAL
-
-Type: {"BUY 📈" if signal == "BUY" else "Sell 📉"}
+Strategy: {best['name']}
+Type: {best['signal']}
 Entry: {price}
 
-SL: {sl}
-TP1: {tp1}
-TP2: {tp2 if score > 85 else "Only if score > 85"}
+SL: {best['sl']}
+TP: {tp}
 
-RR: 1:3 🔥
+Market Trend: {market_dir}
+"""
 
-📊 Market Context:
-Trend: {trend_text}
-Setup: {setup}
-Score: {score}
-Action: {action}
 
-📈Win Probability on TP1 Hit: 70% ✅
-📈Win Probability on TP2 Hit: 45% 🎯"""
+# ---------------- SMART UPDATE ----------------
+def smart_update_message(price, candle, market_type, market_dir, best):
+    return f"""📊 BTC SMART UPDATE
+
+Market: {market_type}
+Trend: {market_dir}
+
+Price: {price}
+
+5M High: {candle['high']}
+5M Low: {candle['low']}
+
+Best Setup: {best['name']} ({best['score']})
+"""
 
 
 # ---------------- START ----------------
-
-def run_backtest():
-
-    global candles_5m, one_min_closes
-
-    df_1m, df_5m = load_csv_data()
-
-    balance = 100
-    trades = []
-
-    for i in range(100, len(df_1m)):
-
-        candles_1m = []
-        candles_5m = []
-
-        # Build candles
-        for j in range(i - 100, i):
-            row = df_1m[j]
-            candles_1m.append({
-                "open": row["open"],
-                "high": row["high"],
-                "low": row["low"],
-                "close": row["close"],
-                "time": row["timestamp"]
-            })
-
-        for j in range(i//5 - 100, i//5):
-            row = df_5m[j]
-            candles_5m.append({
-                "open": row["open"],
-                "high": row["high"],
-                "low": row["low"],
-                "close": row["close"],
-                "time": row["timestamp"]
-            })
-
-        one_min_closes = [c["close"] for c in candles_1m]
-        price = candles_1m[-1]["close"]
-
-        best = strategy_engine()
-
-        if best["signal"] is None:
-            continue
-
-        risk = abs(price - best["sl"])
-        tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
-
-        result = None
-        future_candles = df_1m[i:i+5]
-
-        for future in future_candles:
-            if best["signal"] == "BUY":
-                if future["low"] <= best["sl"]:
-                    result = -1
-                    break
-                if future["high"] >= tp:
-                    result = 2
-                    break
-            else:
-                if future["high"] >= best["sl"]:
-                    result = -1
-                    break
-                if future["low"] <= tp:
-                    result = 2
-                    break
-
-        if result:
-            pnl = balance * 0.01 * result
-            balance += pnl
-            trades.append(result)
-
-    # ✅ PRINT MUST BE HERE (inside function)
-    print("📊 BACKTEST RESULT")
-    print("Final Balance:", balance)
-    print("Total Trades:", len(trades))
-    print("Win Rate:", trades.count(2)/len(trades)*100 if trades else 0)
-
-# ---------------- MODE CONTROL ----------------
-
-if MODE == "BACKTEST":
-    run_backtest()
-    exit()
-
-# ---------------- LIVE START ----------------
-
-send_msg("🚀 BTC BOT STARTED (FINAL STEP FLOW VERSION)")
-
-# ---------------- LOOP ----------------
-last_update_key = None   # ✅ define once at top
+send_msg("🚀 BTC BOT STARTED (PURE 5M)")
 
 while True:
     try:
         now = now_ist()
 
-        candles_1m = get_klines("1m", 100)
-        candles_5m = get_klines("5m", 100)
+        candles_5m = get_klines()
 
-        if not candles_1m or not candles_5m:
+        if not candles_5m:
             time.sleep(10)
             continue
 
-        one_min_closes = [c["close"] for c in candles_1m]
-        price = candles_1m[-1]["close"]
+        update_csv(candles_5m)
 
-        print(f"✅ Loop | {now.strftime('%H:%M:%S')} | Price: {price}")
+        price = candles_5m[-1]["close"]
 
-        # STEP 0 — Market Type
         market_type, market_dir = identify_market_type()
 
-        # STEP 1 — Strategy
         best = strategy_engine()
 
-        # STEP 2 — Filter
-        can_trade, _ = passes_trade_filter(best, price)
+        can_trade = best["signal"] is not None and best["score"] >= 65
 
-        # STEP 3 — Signal
-        if best["signal"] is not None:
-            risk = abs(price - best["sl"])
-            tp = price + risk * 2 if best["signal"] == "BUY" else price - risk * 2
-
-            print(f"📊 SIGNAL: {best['signal']} | SL: {best['sl']} | TP: {tp}")
-
-        # STEP 4 — Execute
-        if MODE in ["LIVE", "HYBRID"] and can_trade and best["score"] >= 65:
+        # TRADE
+        if MODE in ["LIVE", "HYBRID"] and can_trade:
             send_msg(trade_signal_message(price, best, market_dir))
 
-        # STEP 5 — Smart update
-        now_minute = now.minute
+        # SMART UPDATE
+        if now.minute % 5 == 0:
+            key = f"{now.hour}:{now.minute}"
 
-        if now_minute % 5 == 0:
-            current_key = f"{now.hour}:{now_minute}"
-
-            if last_update_key != current_key:
-                last_update_key = current_key
-                last_candle = get_last_5m_candle()
+            if last_update_key != key:
+                last_update_key = key
 
                 send_msg(
                     smart_update_message(
                         price,
-                        last_candle,
+                        candles_5m[-1],
                         market_type,
                         market_dir,
                         best
@@ -890,7 +297,5 @@ while True:
 
     except Exception as e:
         print("ERROR:", e)
-        import traceback
         traceback.print_exc()
         time.sleep(10)
-        continue
