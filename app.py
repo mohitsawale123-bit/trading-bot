@@ -41,25 +41,38 @@ def now_ist():
 
 # ---------------- BINANCE DATA ----------------
 def get_klines(limit=120):
-    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSD&interval=5&limit={limit}"
+    url = "https://api.bybit.com/v5/market/kline"
+    params = {
+        "category": "linear",
+        "symbol": "BTCUSD",
+        "interval": "5",
+        "limit": limit
+    }
 
     try:
-        res = requests.get(url, timeout=10)
+        res = requests.get(url, params=params, timeout=10)
 
-        # ✅ Check empty response
-        if not res.text:
-            print("❌ Empty response from API")
+        # 🔴 EMPTY RESPONSE FIX
+        if not res.text or len(res.text) < 10:
+            print("❌ Empty API response")
             return []
 
-        data = res.json()
+        # 🔴 SAFE JSON PARSE
+        try:
+            data = res.json()
+        except Exception:
+            print("❌ Invalid JSON:", res.text[:100])
+            return []
 
-        # ✅ Check API error
+        # 🔴 API ERROR CHECK
         if data.get("retCode") != 0:
-            print("❌ Bybit Error:", data)
+            print("❌ API Error:", data)
             return []
+
+        raw = data["result"]["list"]
 
         candles = []
-        for d in data["result"]["list"]:
+        for d in raw:
             try:
                 candles.append({
                     "open": float(d[1]),
