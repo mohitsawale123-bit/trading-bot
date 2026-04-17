@@ -45,30 +45,38 @@ def get_klines(limit=120):
 
     try:
         res = requests.get(url, timeout=10)
+
+        # ✅ Check empty response
+        if not res.text:
+            print("❌ Empty response from API")
+            return []
+
         data = res.json()
 
-        if data["retCode"] != 0:
+        # ✅ Check API error
+        if data.get("retCode") != 0:
             print("❌ Bybit Error:", data)
             return []
 
         candles = []
         for d in data["result"]["list"]:
-            candles.append({
-                "open": float(d[1]),
-                "high": float(d[2]),
-                "low": float(d[3]),
-                "close": float(d[4]),
-                "time": int(d[0])
-            })
+            try:
+                candles.append({
+                    "open": float(d[1]),
+                    "high": float(d[2]),
+                    "low": float(d[3]),
+                    "close": float(d[4]),
+                    "time": int(d[0])
+                })
+            except:
+                continue
 
-        candles.reverse()  # IMPORTANT (Bybit gives reverse)
-
+        candles.reverse()
         return candles
 
     except Exception as e:
         print("❌ Request Failed:", e)
         return []
-
 # ---------------- CSV (90 DAYS ROLLING) ----------------
 def update_csv(candles):
     path = "btc_5m.csv"
