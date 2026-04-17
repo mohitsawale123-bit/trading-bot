@@ -40,53 +40,36 @@ def now_ist():
 
 
 # ---------------- BINANCE DATA ----------------
-def get_klines(limit=120):
-    url = "https://api.bybit.com/v5/market/kline"
+def get_klines():
+    import requests
+
+    url = "https://api.exchange.coinbase.com/products/BTC-USD/candles"
     params = {
-        "category": "linear",
-        "symbol": "BTCUSD",
-        "interval": "5",
-        "limit": limit
+        "granularity": 300  # 5 min
     }
 
-    try:
-        res = requests.get(url, params=params, timeout=10)
+    res = requests.get(url, params=params, timeout=10)
 
-        # 🔴 EMPTY RESPONSE FIX
-        if not res.text or len(res.text) < 10:
-            print("❌ Empty API response")
-            return []
+    if res.status_code != 200:
+        print("API ERROR:", res.text)
+        return []
 
-        # 🔴 SAFE JSON PARSE
-        try:
-            data = res.json()
-        except Exception:
-            print("❌ Invalid JSON:", res.text[:100])
-            return []
+    data = res.json()
 
-        # 🔴 API ERROR CHECK
-        if data.get("retCode") != 0:
-            print("❌ API Error:", data)
-            return []
+    candles = []
+    for d in data:
+        candles.append({
+            "time": d[0],
+            "low": float(d[1]),
+            "high": float(d[2]),
+            "open": float(d[3]),
+            "close": float(d[4]),
+        })
 
-        raw = data["result"]["list"]
+    candles.reverse()  # important
 
-        candles = []
-        for d in raw:
-            try:
-                candles.append({
-                    "open": float(d[1]),
-                    "high": float(d[2]),
-                    "low": float(d[3]),
-                    "close": float(d[4]),
-                    "time": int(d[0])
-                })
-            except:
-                continue
-
-        candles.reverse()
-        return candles
-
+    return candles
+    
     except Exception as e:
         print("❌ Request Failed:", e)
         return []
