@@ -41,42 +41,33 @@ def now_ist():
 
 # ---------------- BINANCE DATA ----------------
 def get_klines(limit=120):
-    url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=" + str(limit)
+    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSD&interval=5&limit={limit}"
 
     try:
         res = requests.get(url, timeout=10)
-
-        if res.status_code != 200:
-            print("❌ API Error:", res.text)
-            return []
-
         data = res.json()
 
-        # ❌ If API returns error dict
-        if isinstance(data, dict):
-            print("❌ Binance Error:", data)
+        if data["retCode"] != 0:
+            print("❌ Bybit Error:", data)
             return []
 
         candles = []
-        for d in data:
-            try:
-                candles.append({
-                    "open": float(d[1]),
-                    "high": float(d[2]),
-                    "low": float(d[3]),
-                    "close": float(d[4]),
-                    "time": int(d[0])
-                })
-            except Exception as e:
-                print("⚠️ Bad candle skipped:", d)
-                continue
+        for d in data["result"]["list"]:
+            candles.append({
+                "open": float(d[1]),
+                "high": float(d[2]),
+                "low": float(d[3]),
+                "close": float(d[4]),
+                "time": int(d[0])
+            })
+
+        candles.reverse()  # IMPORTANT (Bybit gives reverse)
 
         return candles
 
     except Exception as e:
         print("❌ Request Failed:", e)
         return []
-
 
 # ---------------- CSV (90 DAYS ROLLING) ----------------
 def update_csv(candles):
