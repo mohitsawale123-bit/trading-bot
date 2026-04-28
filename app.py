@@ -807,7 +807,7 @@ while True:
                 ))
 
         # ── STEP 10: Smart update every 5 min ──
-        if now.minute % 5 == 0:
+        if now.minute % 15 == 0:
             key = f"{now.hour}:{now.minute}"
             if last_update_key != key:
                 last_update_key = key
